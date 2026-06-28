@@ -1,0 +1,43 @@
+@import 'tailwindcss';
+
+:root {
+  --vx-blue: #0084ff;
+  --vx-purple: #7c3aed;
+  --vx-app-bg: #f8fafc;
+  --vx-dashboard-bg: #f5f7fa;
+  --vx-card: #ffffff;
+  --vx-text: #111827;
+  --vx-muted: #6b7280;
+  --vx-border: #e5e7eb;
+  --vx-sidebar: #09090b;
+  font-family:
+    Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI',
+    sans-serif;
+  color: var(--vx-text);
+  background: var(--vx-app-bg);
+  font-synthesis: none;
+  text-rendering: optimizeLegibility;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
+
+body {
+  margin: 0;
+  background: var(--vx-app-bg);
+}
+
+#root {
+  min-height: 100vh;
+}
+
+a {
+  color: inherit;
+  text-decoration: none;
+}
+
+button,
+input,
+select,
+textarea {
+  font: inherit;
+}
