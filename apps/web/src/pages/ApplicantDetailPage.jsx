@@ -1,7 +1,11 @@
 import { useParams } from 'react-router-dom'
+import AiRecommendationPanel from '../components/AiRecommendationPanel'
+import AutomationTimeline from '../components/AutomationTimeline'
+import CandidateScoreCard from '../components/CandidateScoreCard'
 import PageHeader from '../components/PageHeader'
 import { applicants as dummyApplicants } from '../data/dummyApplicants'
 import { getStoredApplications } from '../utils/applicationStorage'
+import { getCandidateScores } from '../utils/candidateInsights'
 
 const statusClass = {
   Qualified: 'border-emerald-400/30 bg-emerald-500/15 text-emerald-300',
@@ -34,6 +38,7 @@ function ApplicantDetailPage() {
   const applicants = [...getStoredApplications(), ...dummyApplicants]
   const applicant =
     applicants.find((item) => item.id === applicantId) ?? applicants[0]
+  const scores = getCandidateScores(applicant)
 
   return (
     <section>
@@ -59,7 +64,7 @@ function ApplicantDetailPage() {
       <div className="mb-6 grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
         {[
           ['Stage', applicant.stage],
-          ['AI screening score', applicant.score],
+          ['Overall score', scores.overallCandidateScore ? `${scores.overallCandidateScore}%` : 'Pending'],
           ['Knockout result', applicant.knockout],
           ['Final decision', applicant.decision],
         ].map(([label, value]) => (
@@ -71,6 +76,15 @@ function ApplicantDetailPage() {
             <p className="mt-2 font-semibold text-white">{value}</p>
           </div>
         ))}
+      </div>
+
+      <div className="mb-6 grid gap-5 xl:grid-cols-[minmax(0,1fr)_minmax(320px,420px)]">
+        <CandidateScoreCard applicant={applicant} />
+        <AiRecommendationPanel applicant={applicant} />
+      </div>
+
+      <div className="mb-6">
+        <AutomationTimeline applicant={applicant} />
       </div>
 
       <div className="grid gap-5 xl:grid-cols-2">

@@ -1,15 +1,8 @@
-import { ArrowRight, Brain, CalendarCheck, CheckCircle2, ShieldCheck, UserPlus } from 'lucide-react'
+import { ArrowRight, Brain, CalendarCheck, CheckCircle2, FileWarning, ShieldAlert, ShieldCheck, Star, UserPlus } from 'lucide-react'
 import PageHeader from '../components/PageHeader'
 import { applicants as dummyApplicants } from '../data/dummyApplicants'
 import { getStoredApplications } from '../utils/applicationStorage'
-
-const metricCards = [
-  ['New Applicant', 24, 'from active campaigns', 'from-slate-800 to-slate-900', UserPlus],
-  ['AI Screening', 18, '+8% this week', 'from-violet-900 to-violet-700', Brain],
-  ['License Verification', 12, '+15% this week', 'from-blue-900 to-blue-700', ShieldCheck],
-  ['Interview Scheduled', 7, '+5% this week', 'from-emerald-950 to-emerald-800', CalendarCheck],
-  ['Ready for Hire', 5, '+20% this week', 'from-teal-950 to-zinc-900', CheckCircle2],
-]
+import { getCandidateScores } from '../utils/candidateInsights'
 
 const activity = [
   ['John Carter applied for Security Officer', '2 min ago', 'New Applicant'],
@@ -21,6 +14,26 @@ const activity = [
 
 function DashboardPage() {
   const applicants = [...getStoredApplications(), ...dummyApplicants]
+  const pendingAiReview = applicants.filter((applicant) => !getCandidateScores(applicant).screeningScore).length
+  const pendingComplianceReview = applicants.filter((applicant) =>
+    ['Pending Upload', 'Needs Review', 'Pending', 'Not Provided', 'Missing'].includes(applicant.licenseStatus) ||
+    ['Pending', 'Missing', 'Not Uploaded'].includes(applicant.documents?.license),
+  ).length
+  const pendingInterviews = applicants.filter((applicant) =>
+    ['Ready for Voice Interview', 'Not Started', 'Blocked'].includes(applicant.interviewStatus) ||
+    applicant.stage === 'Voice Interview Complete',
+  ).length
+  const strongCandidates = applicants.filter((applicant) => {
+    const score = getCandidateScores(applicant).overallCandidateScore
+    return Number.isFinite(score) && score >= 85
+  }).length
+  const metricCards = [
+    ['New Applicant', applicants.filter((applicant) => applicant.stage === 'New Applicant').length, 'from active campaigns', 'from-slate-800 to-slate-900', UserPlus],
+    ['Pending AI Review', pendingAiReview, 'resume and screening automation', 'from-violet-900 to-violet-700', Brain],
+    ['Pending Compliance Review', pendingComplianceReview, 'license and document checks', 'from-blue-900 to-blue-700', ShieldAlert],
+    ['Pending Interviews', pendingInterviews, 'voice or manager interviews', 'from-emerald-950 to-emerald-800', CalendarCheck],
+    ['Strong Candidates', strongCandidates, '85+ overall score', 'from-teal-950 to-zinc-900', Star],
+  ]
 
   return (
     <section>
@@ -94,10 +107,28 @@ function DashboardPage() {
       </div>
 
       <div className="mt-6 rounded-lg border border-white/[0.10] bg-[#0B111C] p-5 sm:mt-8">
-        <h2 className="text-lg font-semibold text-white">Current sample records</h2>
-        <p className="mt-2 text-sm text-zinc-400">
-          {applicants.length} applicants are loaded into the HR pipeline, including local demo submissions.
-        </p>
+        <div className="flex flex-col gap-4 md:flex-row md:items-start md:justify-between">
+          <div>
+            <h2 className="text-lg font-semibold text-white">Automation engine queue</h2>
+            <p className="mt-2 text-sm text-zinc-400">
+              {applicants.length} applicants are loaded into the HR pipeline, including local demo submissions.
+            </p>
+          </div>
+          <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
+            {[
+              ['AI Review', pendingAiReview, FileWarning],
+              ['Compliance', pendingComplianceReview, ShieldCheck],
+              ['Interviews', pendingInterviews, CalendarCheck],
+              ['85+ Score', strongCandidates, Star],
+            ].map(([label, value, Icon]) => (
+              <div key={label} className="rounded-md border border-white/[0.08] bg-white/[0.04] p-3">
+                <Icon size={18} className="text-blue-300" />
+                <p className="mt-2 text-2xl font-semibold text-white">{value}</p>
+                <p className="text-xs font-semibold text-zinc-500">{label}</p>
+              </div>
+            ))}
+          </div>
+        </div>
       </div>
     </section>
   )

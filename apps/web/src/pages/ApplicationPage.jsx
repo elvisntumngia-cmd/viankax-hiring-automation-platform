@@ -364,12 +364,25 @@ function ApplicationPage() {
       interviewTime: 'Not scheduled',
       notes: 'Submitted through Applicant Portal. Awaiting automation review.',
       decision: 'Review',
-      scoringPlaceholders: {
+      scores: {
         resumeScore: null,
-        eligibilityScore: null,
+        eligibilityScore: knockoutFlags.length ? 65 : 100,
         screeningScore: null,
         voiceInterviewScore: null,
         overallCandidateScore: null,
+      },
+      automationTimeline: [
+        { label: 'Application Submitted', state: 'complete', description: 'Your application has been submitted and added to the hiring workflow.' },
+        { label: 'Resume Screened', state: 'current', description: 'Resume parsing and candidate scoring are pending automation review.' },
+        { label: 'Assessment Completed', state: 'pending', description: 'AI screening assessment has not been completed yet.' },
+        { label: 'License Verification', state: 'pending', description: 'License and compliance documents are waiting for review.' },
+        { label: 'Voice Interview', state: 'pending', description: 'Voice interview will trigger after earlier checks.' },
+        { label: 'Interview Scheduling', state: 'pending', description: 'Scheduling opens after qualification steps are complete.' },
+      ],
+      aiRecommendation: {
+        label: knockoutFlags.length ? 'Needs Review' : 'Pending AI Review',
+        confidence: null,
+        summary: 'Newly submitted applicant. Resume parsing, screening assessment, license review, voice interview, and final recommendation are pending automation.',
       },
       submittedAt: submittedAt.toISOString(),
     }

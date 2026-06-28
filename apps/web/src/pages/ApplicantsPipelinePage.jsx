@@ -3,6 +3,7 @@ import { Link } from 'react-router-dom'
 import PageHeader from '../components/PageHeader'
 import { applicants as dummyApplicants } from '../data/dummyApplicants'
 import { getStoredApplications } from '../utils/applicationStorage'
+import { formatScore, getCandidateScores } from '../utils/candidateInsights'
 
 const stageClass = {
   'New Applicant': 'bg-slate-700/70 text-slate-100',
@@ -16,14 +17,6 @@ const stageClass = {
   Hired: 'bg-green-500/20 text-green-300',
   Rejected: 'bg-red-500/20 text-red-300',
 }
-
-const metricCards = [
-  ['New Applicants', 24, '+12% this week', 'text-fuchsia-300'],
-  ['AI Screened', 18, '+8% this week', 'text-sky-300'],
-  ['License Verified', 12, '+15% this week', 'text-emerald-300'],
-  ['Interviews Scheduled', 7, '+5% this week', 'text-blue-300'],
-  ['Ready for Hire', 5, '+20% this week', 'text-green-300'],
-]
 
 function StagePill({ stage }) {
   return (
@@ -39,6 +32,16 @@ function StagePill({ stage }) {
 
 function ApplicantsPipelinePage() {
   const applicants = [...getStoredApplications(), ...dummyApplicants]
+  const metricCards = [
+    ['New Applicants', applicants.filter((applicant) => applicant.stage === 'New Applicant').length, 'awaiting automation', 'text-fuchsia-300'],
+    ['AI Screened', applicants.filter((applicant) => Number.isFinite(getCandidateScores(applicant).screeningScore)).length, 'screening score available', 'text-sky-300'],
+    ['License Verified', applicants.filter((applicant) => applicant.licenseStatus === 'Verified').length, 'compliance cleared', 'text-emerald-300'],
+    ['Interviews Scheduled', applicants.filter((applicant) => applicant.stage === 'Interview Scheduled').length, 'calendar step active', 'text-blue-300'],
+    ['Strong Candidates', applicants.filter((applicant) => {
+      const score = getCandidateScores(applicant).overallCandidateScore
+      return Number.isFinite(score) && score >= 85
+    }).length, '85+ overall score', 'text-green-300'],
+  ]
 
   return (
     <section>
@@ -71,17 +74,14 @@ function ApplicantsPipelinePage() {
 
         <div className="grid gap-3 p-4 md:hidden">
           {applicants.map((applicant) => (
-            <article
-              key={applicant.id}
-              className="rounded-lg border border-white/[0.08] bg-[#080D14] p-4"
-            >
+            <article key={applicant.id} className="rounded-lg border border-white/[0.08] bg-[#080D14] p-4">
               <div className="flex items-start justify-between gap-3">
                 <div className="min-w-0">
                   <h3 className="font-semibold text-white">{applicant.name}</h3>
                   <p className="mt-1 text-sm text-zinc-400">{applicant.role}</p>
                 </div>
                 <span className="rounded-md bg-blue-500/15 px-2 py-1 text-sm font-semibold text-blue-300">
-                  {applicant.score ? `${applicant.score}%` : '-'}
+                  {formatScore(getCandidateScores(applicant).overallCandidateScore)}
                 </span>
               </div>
               <div className="mt-4 grid gap-3 text-sm text-zinc-300">
@@ -91,12 +91,12 @@ function ApplicantsPipelinePage() {
                 </div>
                 <div className="grid grid-cols-2 gap-3">
                   <div>
-                    <p className="text-xs font-semibold uppercase tracking-wide text-zinc-500">Interview</p>
-                    <p className="mt-1">{applicant.interviewTime === 'Not scheduled' ? '-' : applicant.interviewTime}</p>
+                    <p className="text-xs font-semibold uppercase tracking-wide text-zinc-500">AI screening</p>
+                    <p className="mt-1">{formatScore(getCandidateScores(applicant).screeningScore)}</p>
                   </div>
                   <div>
-                    <p className="text-xs font-semibold uppercase tracking-wide text-zinc-500">Applied</p>
-                    <p className="mt-1">{applicant.appliedAt}</p>
+                    <p className="text-xs font-semibold uppercase tracking-wide text-zinc-500">Compliance</p>
+                    <p className="mt-1">{applicant.licenseStatus}</p>
                   </div>
                 </div>
               </div>
@@ -114,7 +114,7 @@ function ApplicantsPipelinePage() {
           <table className="w-full min-w-[900px] border-collapse text-left text-sm">
             <thead className="text-zinc-400">
               <tr className="border-b border-white/[0.08]">
-                {['Applicant', 'Position', 'Stage', 'Score', 'Interview', 'Applied', 'Actions'].map((head) => (
+                {['Applicant', 'Position', 'Stage', 'Overall Score', 'AI Screening', 'Compliance', 'Actions'].map((head) => (
                   <th key={head} className="px-4 py-4 font-semibold lg:px-5">
                     {head}
                   </th>
@@ -130,10 +130,10 @@ function ApplicantsPipelinePage() {
                     <StagePill stage={applicant.stage} />
                   </td>
                   <td className="px-4 py-4 font-semibold lg:px-5">
-                    {applicant.score ? `${applicant.score}%` : '-'}
+                    {formatScore(getCandidateScores(applicant).overallCandidateScore)}
                   </td>
-                  <td className="px-4 py-4 lg:px-5">{applicant.interviewTime === 'Not scheduled' ? '-' : applicant.interviewTime}</td>
-                  <td className="px-4 py-4 lg:px-5">{applicant.appliedAt}</td>
+                  <td className="px-4 py-4 lg:px-5">{formatScore(getCandidateScores(applicant).screeningScore)}</td>
+                  <td className="px-4 py-4 lg:px-5">{applicant.licenseStatus}</td>
                   <td className="px-4 py-4 lg:px-5">
                     <div className="flex items-center gap-3 text-zinc-400">
                       <Link to={`/dashboard/applicants/${applicant.id}`} aria-label={`View ${applicant.name}`}>

@@ -23,6 +23,13 @@ export const applicants = [
     stage: 'New Applicant',
     status: 'In Progress',
     score: 72,
+    scores: {
+      resumeScore: 68,
+      eligibilityScore: 100,
+      screeningScore: 72,
+      voiceInterviewScore: null,
+      overallCandidateScore: 76,
+    },
     licenseStatus: 'Needs Review',
     interviewStatus: 'Not Started',
     appliedAt: 'Today, 9:12 AM',
@@ -32,6 +39,19 @@ export const applicants = [
       governmentId: 'Uploaded',
     },
     knockout: 'Passed',
+    automationTimeline: [
+      { label: 'Application Submitted', state: 'complete', description: 'Candidate entered the pipeline from the applicant portal.' },
+      { label: 'Resume Screened', state: 'current', description: 'Resume parsing and role-fit scoring are pending automation review.' },
+      { label: 'Assessment Completed', state: 'pending', description: 'AI screening assessment has not been sent yet.' },
+      { label: 'License Verification', state: 'pending', description: 'License document requires review.' },
+      { label: 'Voice Interview', state: 'pending', description: 'Voice interview will trigger after earlier checks.' },
+      { label: 'Interview Scheduling', state: 'pending', description: 'Scheduling is not available yet.' },
+    ],
+    aiRecommendation: {
+      label: 'Needs Review',
+      confidence: 76,
+      summary: 'Candidate passes basic eligibility and has useful entry-level site experience. License review and resume scoring should be completed before advancing.',
+    },
     aiSummary:
       'John has entry-level security experience, strong availability, and meets core knockout requirements. License needs manual review.',
     screeningAnswers: [
@@ -59,6 +79,13 @@ export const applicants = [
     stage: 'Assessment Completed',
     status: 'Qualified',
     score: 88,
+    scores: {
+      resumeScore: 86,
+      eligibilityScore: 100,
+      screeningScore: 88,
+      voiceInterviewScore: null,
+      overallCandidateScore: 89,
+    },
     licenseStatus: 'Verified',
     interviewStatus: 'Ready for Voice Interview',
     appliedAt: 'Yesterday, 3:40 PM',
@@ -68,6 +95,19 @@ export const applicants = [
       governmentId: 'Uploaded',
     },
     knockout: 'Passed',
+    automationTimeline: [
+      { label: 'Application Submitted', state: 'complete', description: 'Candidate entered the pipeline from the applicant portal.' },
+      { label: 'Resume Screened', state: 'complete', description: 'Resume indicates strong commercial security experience.' },
+      { label: 'Assessment Completed', state: 'complete', description: 'AI screening assessment returned strong role-fit signals.' },
+      { label: 'License Verification', state: 'current', description: 'License is verified; compliance review is being finalized.' },
+      { label: 'Voice Interview', state: 'pending', description: 'Voice interview link is ready to send.' },
+      { label: 'Interview Scheduling', state: 'pending', description: 'Scheduling opens after voice interview completion.' },
+    ],
+    aiRecommendation: {
+      label: 'Strong Candidate',
+      confidence: 91,
+      summary: 'Candidate has three years of commercial security experience, verified documentation, reliable availability, and strong written screening responses.',
+    },
     aiSummary:
       'Melissa shows strong professionalism, clear incident-reporting experience, and reliable shift availability.',
     screeningAnswers: [
@@ -95,6 +135,13 @@ export const applicants = [
     stage: 'License Pending',
     status: 'Pending',
     score: 81,
+    scores: {
+      resumeScore: 84,
+      eligibilityScore: 92,
+      screeningScore: 81,
+      voiceInterviewScore: null,
+      overallCandidateScore: 82,
+    },
     licenseStatus: 'Pending Upload',
     interviewStatus: 'Blocked',
     appliedAt: '2 days ago',
@@ -104,6 +151,19 @@ export const applicants = [
       governmentId: 'Uploaded',
     },
     knockout: 'Needs Review',
+    automationTimeline: [
+      { label: 'Application Submitted', state: 'complete', description: 'Candidate entered the pipeline from the applicant portal.' },
+      { label: 'Resume Screened', state: 'complete', description: 'Resume supports armed security role fit.' },
+      { label: 'Assessment Completed', state: 'complete', description: 'Screening answers indicate relevant patrol and site experience.' },
+      { label: 'License Verification', state: 'current', description: 'License upload is missing and blocks advancement.' },
+      { label: 'Voice Interview', state: 'pending', description: 'Voice interview is paused until compliance clears.' },
+      { label: 'Interview Scheduling', state: 'pending', description: 'Scheduling is blocked by missing license documentation.' },
+    ],
+    aiRecommendation: {
+      label: 'Compliance Hold',
+      confidence: 82,
+      summary: 'Candidate appears qualified for armed posts, but license documentation is missing. Automation should request upload before voice interview or scheduling.',
+    },
     aiSummary:
       'David appears qualified for armed posts but must provide valid license documentation before moving forward.',
     screeningAnswers: [
@@ -131,6 +191,13 @@ export const applicants = [
     stage: 'Interview Scheduled',
     status: 'Qualified',
     score: 93,
+    scores: {
+      resumeScore: 94,
+      eligibilityScore: 100,
+      screeningScore: 92,
+      voiceInterviewScore: 91,
+      overallCandidateScore: 93,
+    },
     licenseStatus: 'Verified',
     interviewStatus: 'Scheduled',
     appliedAt: '3 days ago',
@@ -140,6 +207,19 @@ export const applicants = [
       governmentId: 'Uploaded',
     },
     knockout: 'Passed',
+    automationTimeline: [
+      { label: 'Application Submitted', state: 'complete', description: 'Candidate entered the pipeline from the applicant portal.' },
+      { label: 'Resume Screened', state: 'complete', description: 'Resume shows strong care experience and shift reliability.' },
+      { label: 'Assessment Completed', state: 'complete', description: 'AI screening assessment returned high-fit signals.' },
+      { label: 'License Verification', state: 'complete', description: 'License and identity documents are verified.' },
+      { label: 'Voice Interview', state: 'complete', description: 'Voice interview is complete with strong communication score.' },
+      { label: 'Interview Scheduling', state: 'current', description: 'Hiring manager interview is scheduled.' },
+    ],
+    aiRecommendation: {
+      label: 'Strong Candidate',
+      confidence: 94,
+      summary: 'Candidate has five years of care experience, verified documentation, reliable transportation, weekend availability, and strong voice interview performance.',
+    },
     aiSummary:
       'Angela is highly qualified, reliable, and has strong patient-care communication. Recommended for final review.',
     screeningAnswers: [
@@ -168,6 +248,13 @@ export const applicants = [
     stage: 'Rejected',
     status: 'Rejected',
     score: 42,
+    scores: {
+      resumeScore: 35,
+      eligibilityScore: 20,
+      screeningScore: 42,
+      voiceInterviewScore: null,
+      overallCandidateScore: 32,
+    },
     licenseStatus: 'Not Applicable',
     interviewStatus: 'Closed',
     appliedAt: '4 days ago',
@@ -177,6 +264,19 @@ export const applicants = [
       governmentId: 'Not Uploaded',
     },
     knockout: 'Failed',
+    automationTimeline: [
+      { label: 'Application Submitted', state: 'complete', description: 'Candidate entered the pipeline from the applicant portal.' },
+      { label: 'Resume Screened', state: 'pending', description: 'Resume screening was not triggered because knockout criteria failed.' },
+      { label: 'Assessment Completed', state: 'pending', description: 'AI screening assessment was not sent.' },
+      { label: 'License Verification', state: 'pending', description: 'Compliance review was not triggered.' },
+      { label: 'Voice Interview', state: 'pending', description: 'Voice interview was not triggered.' },
+      { label: 'Interview Scheduling', state: 'pending', description: 'Scheduling is closed for this candidate.' },
+    ],
+    aiRecommendation: {
+      label: 'Do Not Advance',
+      confidence: 96,
+      summary: 'Candidate failed required knockout criteria because transportation is unavailable and background check consent was declined.',
+    },
     aiSummary:
       'Kevin failed required knockout criteria due to no transportation and refusal of background check consent.',
     screeningAnswers: [
