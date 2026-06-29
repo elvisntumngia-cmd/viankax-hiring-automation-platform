@@ -71,3 +71,80 @@ export function getAiRecommendation(applicant) {
     summary: applicant.aiRecommendation?.summary ?? applicant.aiSummary,
   }
 }
+
+export const pipelineFilterPresets = {
+  'new-applicant': {
+    label: 'New Applicants',
+    match: (applicant) => applicant.stage === 'New Applicant',
+  },
+  'pending-ai-review': {
+    label: 'Pending AI Review',
+    match: (applicant) => !Number.isFinite(getCandidateScores(applicant).screeningScore),
+  },
+  'pending-compliance-review': {
+    label: 'Pending Compliance Review',
+    match: (applicant) =>
+      ['Pending Upload', 'Needs Review', 'Pending', 'Not Provided', 'Missing'].includes(applicant.licenseStatus) ||
+      ['Pending', 'Missing', 'Not Uploaded'].includes(applicant.documents?.license),
+  },
+  'pending-interviews': {
+    label: 'Pending Interviews',
+    match: (applicant) =>
+      ['Ready for Voice Interview', 'Not Started', 'Blocked'].includes(applicant.interviewStatus) ||
+      applicant.stage === 'Voice Interview Complete',
+  },
+  'strong-candidates': {
+    label: 'Strong Candidates',
+    match: (applicant) => {
+      const score = getCandidateScores(applicant).overallCandidateScore
+      return Number.isFinite(score) && score >= 85
+    },
+  },
+}
+
+export function matchesPipelinePreset(applicant, presetKey) {
+  if (!presetKey || presetKey === 'all') return true
+  return pipelineFilterPresets[presetKey]?.match(applicant) ?? true
+}
+
+export function getRecentApplicantActivity(applicants) {
+  return applicants.slice(0, 6).map((applicant) => {
+    if (applicant.stage === 'Interview Scheduled') {
+      return {
+        title: `Interview scheduled for ${applicant.name}`,
+        time: applicant.appliedAt,
+        status: 'Scheduled',
+      }
+    }
+
+    if (applicant.stage === 'License Verified') {
+      return {
+        title: `License verified for ${applicant.name}`,
+        time: applicant.appliedAt,
+        status: 'Verified',
+      }
+    }
+
+    if (applicant.stage === 'Assessment Completed') {
+      return {
+        title: `AI screening completed for ${applicant.name}`,
+        time: applicant.appliedAt,
+        status: 'Qualified',
+      }
+    }
+
+    if (applicant.stage === 'Voice Interview Complete') {
+      return {
+        title: `Voice interview completed for ${applicant.name}`,
+        time: applicant.appliedAt,
+        status: 'Completed',
+      }
+    }
+
+    return {
+      title: `${applicant.name} applied for ${applicant.role}`,
+      time: applicant.appliedAt,
+      status: applicant.stage,
+    }
+  })
+}

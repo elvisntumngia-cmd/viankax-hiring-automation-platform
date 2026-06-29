@@ -1,9 +1,9 @@
 import { Eye, MoreVertical, Search } from 'lucide-react'
-import { Link } from 'react-router-dom'
+import { Link, useSearchParams } from 'react-router-dom'
 import PageHeader from '../components/PageHeader'
-import { applicants as dummyApplicants } from '../data/dummyApplicants'
+import { applicants as dummyApplicants, pipelineStages } from '../data/dummyApplicants'
 import { getStoredApplications } from '../utils/applicationStorage'
-import { formatScore, getCandidateScores } from '../utils/candidateInsights'
+import { formatScore, getCandidateScores, matchesPipelinePreset, pipelineFilterPresets } from '../utils/candidateInsights'
 
 const stageClass = {
   'New Applicant': 'bg-slate-700/70 text-slate-100',
@@ -31,7 +31,59 @@ function StagePill({ stage }) {
 }
 
 function ApplicantsPipelinePage() {
+  const [searchParams, setSearchParams] = useSearchParams()
   const applicants = [...getStoredApplications(), ...dummyApplicants]
+  const searchQuery = searchParams.get('q') ?? ''
+  const stageFilter = searchParams.get('stage') ?? 'All Stages'
+  const presetFilter = searchParams.get('filter') ?? 'all'
+  const activePresetLabel = pipelineFilterPresets[presetFilter]?.label
+  const filteredApplicants = applicants.filter((applicant) => {
+    const searchableText = [
+      applicant.name,
+      applicant.role,
+      applicant.client,
+      applicant.location,
+      applicant.email,
+      applicant.phone,
+      applicant.stage,
+      applicant.licenseStatus,
+      applicant.interviewStatus,
+    ].join(' ').toLowerCase()
+    const matchesSearch = searchableText.includes(searchQuery.trim().toLowerCase())
+    const matchesStage = stageFilter === 'All Stages' || applicant.stage === stageFilter
+
+    return matchesSearch && matchesStage && matchesPipelinePreset(applicant, presetFilter)
+  })
+
+  function updateParam(key, value) {
+    const nextParams = new URLSearchParams(searchParams)
+
+    if (!value || value === 'All Stages' || value === 'all') {
+      nextParams.delete(key)
+    } else {
+      nextParams.set(key, value)
+    }
+
+    setSearchParams(nextParams)
+  }
+
+  function handleStageChange(event) {
+    const nextParams = new URLSearchParams(searchParams)
+    nextParams.delete('filter')
+
+    if (event.target.value === 'All Stages') {
+      nextParams.delete('stage')
+    } else {
+      nextParams.set('stage', event.target.value)
+    }
+
+    setSearchParams(nextParams)
+  }
+
+  function clearFilters() {
+    setSearchParams({})
+  }
+
   const metricCards = [
     ['New Applicants', applicants.filter((applicant) => applicant.stage === 'New Applicant').length, 'awaiting automation', 'text-fuchsia-300'],
     ['AI Screened', applicants.filter((applicant) => Number.isFinite(getCandidateScores(applicant).screeningScore)).length, 'screening score available', 'text-sky-300'],
@@ -59,21 +111,45 @@ function ApplicantsPipelinePage() {
             <label className="relative block min-w-0 lg:min-w-[280px]">
               <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-zinc-500" size={18} />
               <input
+                value={searchQuery}
+                onChange={(event) => updateParam('q', event.target.value)}
                 className="w-full rounded-lg border border-white/[0.10] bg-[#080D14] py-3 pl-10 pr-3 text-sm text-white outline-none placeholder:text-zinc-500 focus:border-[#0084FF]"
                 placeholder="Search applicants..."
               />
             </label>
-            <select className="w-full rounded-lg border border-white/[0.10] bg-[#080D14] px-4 py-3 text-sm font-medium text-zinc-300 outline-none focus:border-[#0084FF]">
+            <select
+              value={stageFilter}
+              onChange={handleStageChange}
+              className="w-full rounded-lg border border-white/[0.10] bg-[#080D14] px-4 py-3 text-sm font-medium text-zinc-300 outline-none focus:border-[#0084FF]"
+            >
               <option>All Stages</option>
-              <option>AI Screening</option>
-              <option>License Verified</option>
-              <option>Interview Scheduled</option>
+              {pipelineStages.map((stage) => (
+                <option key={stage}>{stage}</option>
+              ))}
             </select>
           </div>
         </div>
 
+        {(activePresetLabel || searchQuery || stageFilter !== 'All Stages') ? (
+          <div className="flex flex-col gap-3 border-b border-white/[0.08] px-4 py-3 text-sm text-zinc-300 sm:flex-row sm:items-center sm:justify-between">
+            <p>
+              Showing <span className="font-semibold text-white">{filteredApplicants.length}</span> of{' '}
+              <span className="font-semibold text-white">{applicants.length}</span> applicants
+              {activePresetLabel ? ` for ${activePresetLabel}` : ''}
+              {stageFilter !== 'All Stages' ? ` in ${stageFilter}` : ''}
+            </p>
+            <button
+              type="button"
+              onClick={clearFilters}
+              className="w-fit rounded-md border border-white/[0.10] px-3 py-2 font-semibold text-white hover:border-[#0084FF] hover:text-[#0084FF]"
+            >
+              Clear filters
+            </button>
+          </div>
+        ) : null}
+
         <div className="grid gap-3 p-4 md:hidden">
-          {applicants.map((applicant) => (
+          {filteredApplicants.map((applicant) => (
             <article key={applicant.id} className="rounded-lg border border-white/[0.08] bg-[#080D14] p-4">
               <div className="flex items-start justify-between gap-3">
                 <div className="min-w-0">
@@ -122,7 +198,7 @@ function ApplicantsPipelinePage() {
               </tr>
             </thead>
             <tbody className="divide-y divide-white/[0.08] text-zinc-200">
-              {applicants.map((applicant) => (
+              {filteredApplicants.map((applicant) => (
                 <tr key={applicant.id} className="hover:bg-white/[0.03]">
                   <td className="px-4 py-4 font-semibold text-white lg:px-5">{applicant.name}</td>
                   <td className="px-4 py-4 lg:px-5">{applicant.role}</td>
@@ -149,6 +225,13 @@ function ApplicantsPipelinePage() {
             </tbody>
           </table>
         </div>
+
+        {filteredApplicants.length === 0 ? (
+          <div className="border-t border-white/[0.08] p-8 text-center">
+            <p className="font-semibold text-white">No applicants match this filter.</p>
+            <p className="mt-2 text-sm text-zinc-400">Try another stage, search term, or clear the active filters.</p>
+          </div>
+        ) : null}
       </div>
 
       <div className="mt-5 grid gap-4 sm:grid-cols-2 xl:grid-cols-5">
