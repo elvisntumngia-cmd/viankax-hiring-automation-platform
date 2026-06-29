@@ -159,7 +159,8 @@ function App() {
         <Route path="/jobs" element={<JobsPage />} />
         <Route path="/jobs/:jobId" element={<JobDetailsPage />} />
         <Route path="/apply/:jobId" element={<ApplicationPage />} />
-        <Route path="/success" element={<ApplicationSuccessPage />} />`r`n        <Route path="/status" element={<ApplicationStatusPage />} />
+        <Route path="/success" element={<ApplicationSuccessPage />} />
+        <Route path="/status" element={<ApplicationStatusPage />} />
         <Route path="/dashboard" element={<DashboardPage />} />
         <Route path="/dashboard/applicants" element={<ApplicantsPipelinePage />} />
         <Route

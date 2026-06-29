@@ -45,7 +45,8 @@ function ApplicationSuccessPage() {
           {[
             'Confirmation SMS/email is sent to the applicant.',
             'The candidate enters the HR pipeline as New Applicant.',
-            'Resume screening, AI assessment, document review, voice interview, and scheduling can be triggered in later phases.',
+            'Automation engine syncs the candidate record to the HR dashboard.',
+            'AI resume screening, license check, voice interview, and auto-scheduling can be triggered in later phases.',
           ].map((item) => (
             <p key={item} className="rounded-md bg-[#F8FAFC] p-3">
               {item}

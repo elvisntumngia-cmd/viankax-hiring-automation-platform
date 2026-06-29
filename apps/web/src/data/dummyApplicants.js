@@ -37,6 +37,9 @@ export const applicants = [
       resume: 'Uploaded',
       license: 'Pending',
       governmentId: 'Uploaded',
+      cpr: 'Not Uploaded',
+      firstAid: 'Not Uploaded',
+      firearms: 'Not Uploaded',
     },
     knockout: 'Passed',
     automationTimeline: [
@@ -93,6 +96,9 @@ export const applicants = [
       resume: 'Uploaded',
       license: 'Verified',
       governmentId: 'Uploaded',
+      cpr: 'Not Uploaded',
+      firstAid: 'Not Uploaded',
+      firearms: 'Not Uploaded',
     },
     knockout: 'Passed',
     automationTimeline: [
@@ -149,6 +155,9 @@ export const applicants = [
       resume: 'Uploaded',
       license: 'Missing',
       governmentId: 'Uploaded',
+      cpr: 'Not Uploaded',
+      firstAid: 'Not Uploaded',
+      firearms: 'Uploaded',
     },
     knockout: 'Needs Review',
     automationTimeline: [
@@ -205,6 +214,9 @@ export const applicants = [
       resume: 'Uploaded',
       license: 'Verified',
       governmentId: 'Uploaded',
+      cpr: 'Uploaded',
+      firstAid: 'Uploaded',
+      firearms: 'Not Uploaded',
     },
     knockout: 'Passed',
     automationTimeline: [
@@ -262,6 +274,9 @@ export const applicants = [
       resume: 'Not Uploaded',
       license: 'Not Uploaded',
       governmentId: 'Not Uploaded',
+      cpr: 'Not Uploaded',
+      firstAid: 'Not Uploaded',
+      firearms: 'Not Uploaded',
     },
     knockout: 'Failed',
     automationTimeline: [

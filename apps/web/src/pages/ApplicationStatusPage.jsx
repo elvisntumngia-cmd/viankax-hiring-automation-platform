@@ -51,6 +51,10 @@ function ApplicationStatusPage() {
           >
             Basic screening: {application.knockoutResult}
           </div>
+          <div className="mt-4 rounded-md border border-blue-100 bg-blue-50 p-3 text-sm leading-6 text-blue-800">
+            Automation engine: dashboard sync complete. AI screening, license review,
+            voice interview, and scheduling updates will appear here as they run.
+          </div>
         </aside>
 
         <AutomationTimeline applicant={application} variant="light" />

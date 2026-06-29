@@ -1,4 +1,4 @@
-import { useParams } from 'react-router-dom'
+import { Link, useParams } from 'react-router-dom'
 import AiRecommendationPanel from '../components/AiRecommendationPanel'
 import AutomationTimeline from '../components/AutomationTimeline'
 import CandidateScoreCard from '../components/CandidateScoreCard'
@@ -33,11 +33,39 @@ function DetailRow({ label, value }) {
   )
 }
 
+const documentRows = [
+  ['Resume', 'resume'],
+  ['License / guard card', 'license'],
+  ['Government ID', 'governmentId'],
+  ['CPR certification', 'cpr'],
+  ['First aid certification', 'firstAid'],
+  ['Firearms certification', 'firearms'],
+]
+
 function ApplicantDetailPage() {
   const { applicantId } = useParams()
   const applicants = [...getStoredApplications(), ...dummyApplicants]
-  const applicant =
-    applicants.find((item) => item.id === applicantId) ?? applicants[0]
+  const applicant = applicants.find((item) => item.id === applicantId)
+
+  if (!applicant) {
+    return (
+      <section className="max-w-3xl rounded-lg border border-white/[0.10] bg-[#0B111C] p-6 shadow-xl shadow-black/20">
+        <PageHeader
+          eyebrow="Applicant profile"
+          title="Applicant not found"
+          description="This record may have been removed, filtered out, or not synced from the backend yet."
+          variant="dark"
+        />
+        <Link
+          to="/dashboard/applicants"
+          className="mt-2 inline-flex rounded-md bg-[#0084FF] px-5 py-3 font-semibold text-white"
+        >
+          Back to applicant pipeline
+        </Link>
+      </section>
+    )
+  }
+
   const scores = getCandidateScores(applicant)
 
   return (
@@ -96,10 +124,13 @@ function ApplicantDetailPage() {
         </InfoCard>
 
         <InfoCard title="Documents">
-          <DetailRow label="Resume" value={applicant.documents.resume} />
-          <DetailRow label="License / guard card" value={applicant.documents.license} />
-          <DetailRow label="Government ID" value={applicant.documents.governmentId} />
+          {documentRows.map(([label, key]) => (
+            <DetailRow key={key} label={label} value={applicant.documents?.[key] ?? 'Not Uploaded'} />
+          ))}
           <DetailRow label="License status" value={applicant.licenseStatus} />
+          <p className="mt-4 rounded-md border border-white/[0.08] bg-white/[0.04] p-3 text-zinc-400">
+            Uploads are demo placeholders in Phase 1. Supabase Storage will handle real files in Phase 2.
+          </p>
         </InfoCard>
 
         <InfoCard title="AI resume summary">
