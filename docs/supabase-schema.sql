@@ -138,6 +138,8 @@ create index if not exists idx_applicants_job_id on applicants(job_id);
 create index if not exists idx_applicants_current_stage on applicants(current_stage);
 create index if not exists idx_applicant_documents_applicant_id on applicant_documents(applicant_id);
 create index if not exists idx_candidate_scores_applicant_id on candidate_scores(applicant_id);
+create unique index if not exists idx_candidate_scores_unique_applicant on candidate_scores(applicant_id);
+create unique index if not exists idx_ai_recommendations_unique_applicant on ai_recommendations(applicant_id);
 create index if not exists idx_automation_events_applicant_id on automation_events(applicant_id);
 create index if not exists idx_pipeline_stage_history_applicant_id on pipeline_stage_history(applicant_id);
 

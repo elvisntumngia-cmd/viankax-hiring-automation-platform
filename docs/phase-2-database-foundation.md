@@ -51,16 +51,18 @@ Do not place service role keys in frontend code.
 1. Create a Supabase project.
 2. Open the Supabase SQL editor.
 3. Run `docs/supabase-schema.sql`.
-4. Create storage buckets:
-   - `resumes`
-   - `licenses`
-   - `government-ids`
-   - `certifications`
-   - `voice-interviews`
-5. Add the frontend environment variables.
-6. Connect the application form to insert records.
-7. Connect document uploads to Supabase Storage.
-8. Replace dashboard dummy data with database reads.
+4. Run `docs/supabase-storage.sql`.
+5. Run `docs/supabase-seed.sql` for demo records.
+6. Add the frontend environment variables.
+7. Connect the application form to insert records.
+8. Connect document uploads to Supabase Storage.
+9. Replace dashboard dummy data with database reads.
+
+## SQL Files
+
+- `docs/supabase-schema.sql`: tables, indexes, and initial RLS policies.
+- `docs/supabase-storage.sql`: private storage buckets for resumes, licenses, IDs, certifications, and voice recordings.
+- `docs/supabase-seed.sql`: demo clients, jobs, applicants, scores, and AI recommendations.
 
 ## Phase 2 Boundary
 
