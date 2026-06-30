@@ -36,26 +36,21 @@ function DetailRow({ label, value }) {
 }
 
 const documentRows = [
-  ['Resume', 'resume'],
-  ['License / guard card', 'license'],
-  ['Government ID', 'governmentId'],
-  ['CPR certification', 'cpr'],
-  ['First aid certification', 'firstAid'],
-  ['Firearms certification', 'firearms'],
+  ['Resume', 'resume', 'resume'],
+  ['License / guard card', 'license', 'license'],
+  ['Government ID', 'governmentId', 'government_id'],
+  ['CPR certification', 'cpr', 'cpr'],
+  ['First aid certification', 'firstAid', 'first_aid'],
+  ['Firearms certification', 'firearms', 'firearms'],
 ]
-
-const documentLabels = {
-  resume: 'Resume',
-  license: 'License / guard card',
-  government_id: 'Government ID',
-  cpr: 'CPR certification',
-  first_aid: 'First aid certification',
-  firearms: 'Firearms certification',
-}
 
 async function openDocument(document) {
   const signedUrl = await createDocumentSignedUrl(document)
   window.open(signedUrl, '_blank', 'noopener,noreferrer')
+}
+
+function getDocumentFile(applicant, documentType) {
+  return applicant.documentFiles?.find((document) => document.type === documentType)
 }
 
 function ApplicantDetailPage() {
@@ -154,33 +149,38 @@ function ApplicantDetailPage() {
         </InfoCard>
 
         <InfoCard title="Documents">
-          {documentRows.map(([label, key]) => (
-            <DetailRow key={key} label={label} value={applicant.documents?.[key] ?? 'Not Uploaded'} />
-          ))}
-          <DetailRow label="License status" value={applicant.licenseStatus} />
-          {applicant.documentFiles?.length ? (
-            <div className="mt-4 space-y-2">
-              {applicant.documentFiles.map((document) => (
-                <div key={`${document.bucket}-${document.path}`} className="flex flex-col gap-3 rounded-md border border-white/[0.08] bg-white/[0.04] p-3 sm:flex-row sm:items-center sm:justify-between">
+          <div className="space-y-2">
+            {documentRows.map(([label, key, documentType]) => {
+              const documentFile = getDocumentFile(applicant, documentType)
+              const documentStatus = applicant.documents?.[key] ?? 'Not Uploaded'
+
+              return (
+                <div key={key} className="flex flex-col gap-3 rounded-md border border-white/[0.08] bg-white/[0.04] p-3 sm:flex-row sm:items-center sm:justify-between">
                   <div className="min-w-0">
-                    <p className="font-semibold text-white">{documentLabels[document.type] ?? document.type}</p>
-                    <p className="mt-1 truncate text-xs text-zinc-500">{document.fileName}</p>
+                    <p className="font-semibold text-white">{label}</p>
+                    <p className="mt-1 text-sm text-zinc-400">Status: {documentStatus}</p>
+                    <p className="mt-1 truncate text-xs text-zinc-500">
+                      {documentFile?.fileName ?? 'No storage file attached'}
+                    </p>
                   </div>
-                  <button
-                    type="button"
-                    onClick={() => openDocument(document)}
-                    className="w-fit rounded-md border border-white/[0.12] px-3 py-2 text-sm font-semibold text-white hover:border-[#0084FF] hover:text-[#0084FF]"
-                  >
-                    View file
-                  </button>
+                  {documentFile ? (
+                    <button
+                      type="button"
+                      onClick={() => openDocument(documentFile)}
+                      className="w-fit rounded-md border border-white/[0.12] px-3 py-2 text-sm font-semibold text-white hover:border-[#0084FF] hover:text-[#0084FF]"
+                    >
+                      View file
+                    </button>
+                  ) : (
+                    <span className="w-fit rounded-md border border-white/[0.08] px-3 py-2 text-sm font-semibold text-zinc-500">
+                      No file uploaded
+                    </span>
+                  )}
                 </div>
-              ))}
-            </div>
-          ) : (
-            <p className="mt-4 rounded-md border border-white/[0.08] bg-white/[0.04] p-3 text-zinc-400">
-              No Supabase Storage files are attached yet.
-            </p>
-          )}
+              )
+            })}
+          </div>
+          <DetailRow label="License status" value={applicant.licenseStatus} />
         </InfoCard>
 
         <InfoCard title="AI resume summary">
