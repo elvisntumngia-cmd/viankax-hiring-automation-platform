@@ -155,18 +155,22 @@ alter table pipeline_stage_history enable row level security;
 alter table voice_interviews enable row level security;
 alter table interview_schedules enable row level security;
 
+drop policy if exists "Public can read open jobs" on jobs;
 create policy "Public can read open jobs"
   on jobs for select
   using (status = 'open');
 
+drop policy if exists "Public can submit applicants" on applicants;
 create policy "Public can submit applicants"
   on applicants for insert
   with check (true);
 
+drop policy if exists "Public can submit screening answers" on screening_answers;
 create policy "Public can submit screening answers"
   on screening_answers for insert
   with check (true);
 
+drop policy if exists "Public can create document records" on applicant_documents;
 create policy "Public can create document records"
   on applicant_documents for insert
   with check (true);
