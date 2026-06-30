@@ -333,3 +333,99 @@ values
   ('10000000-0000-0000-0000-000000000005', 'Transportation', 'No reliable transportation.', 'application'),
   ('10000000-0000-0000-0000-000000000005', 'Background check', 'Did not consent.', 'application'),
   ('10000000-0000-0000-0000-000000000005', 'Availability', 'Cannot work weekends or nights.', 'application');
+
+delete from automation_events
+where applicant_id in (
+  '10000000-0000-0000-0000-000000000001',
+  '10000000-0000-0000-0000-000000000002',
+  '10000000-0000-0000-0000-000000000003',
+  '10000000-0000-0000-0000-000000000004',
+  '10000000-0000-0000-0000-000000000005'
+);
+
+insert into automation_events (applicant_id, event_type, event_status, event_label, metadata)
+values
+  (
+    '10000000-0000-0000-0000-000000000001',
+    'application_submitted',
+    'complete',
+    'Application Submitted',
+    '{"description":"Candidate entered the pipeline from the applicant portal."}'::jsonb
+  ),
+  (
+    '10000000-0000-0000-0000-000000000001',
+    'resume_screening',
+    'current',
+    'Resume Screening',
+    '{"description":"Resume parsing and role-fit scoring are pending automation review."}'::jsonb
+  ),
+  (
+    '10000000-0000-0000-0000-000000000002',
+    'application_submitted',
+    'complete',
+    'Application Submitted',
+    '{"description":"Candidate entered the pipeline from the applicant portal."}'::jsonb
+  ),
+  (
+    '10000000-0000-0000-0000-000000000002',
+    'ai_screening_completed',
+    'complete',
+    'AI Screening Completed',
+    '{"description":"AI screening assessment returned strong role-fit signals."}'::jsonb
+  ),
+  (
+    '10000000-0000-0000-0000-000000000002',
+    'license_verification',
+    'current',
+    'License Verification',
+    '{"description":"License is verified; compliance review is being finalized."}'::jsonb
+  ),
+  (
+    '10000000-0000-0000-0000-000000000003',
+    'application_submitted',
+    'complete',
+    'Application Submitted',
+    '{"description":"Candidate entered the pipeline from the applicant portal."}'::jsonb
+  ),
+  (
+    '10000000-0000-0000-0000-000000000003',
+    'license_verification',
+    'current',
+    'License Verification',
+    '{"description":"License upload is missing and blocks advancement."}'::jsonb
+  ),
+  (
+    '10000000-0000-0000-0000-000000000004',
+    'application_submitted',
+    'complete',
+    'Application Submitted',
+    '{"description":"Candidate entered the pipeline from the applicant portal."}'::jsonb
+  ),
+  (
+    '10000000-0000-0000-0000-000000000004',
+    'voice_interview_complete',
+    'complete',
+    'Voice Interview Complete',
+    '{"description":"Voice interview is complete with strong communication score."}'::jsonb
+  ),
+  (
+    '10000000-0000-0000-0000-000000000004',
+    'interview_scheduled',
+    'current',
+    'Interview Scheduled',
+    '{"description":"Hiring manager interview is scheduled."}'::jsonb
+  ),
+  (
+    '10000000-0000-0000-0000-000000000005',
+    'application_submitted',
+    'complete',
+    'Application Submitted',
+    '{"description":"Candidate entered the pipeline from the applicant portal."}'::jsonb
+  ),
+  (
+    '10000000-0000-0000-0000-000000000005',
+    'knockout_failed',
+    'complete',
+    'Knockout Screening Failed',
+    '{"description":"Required criteria failed, so downstream automation was not triggered."}'::jsonb
+  );

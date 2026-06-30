@@ -23,6 +23,17 @@ function AutomationTimeline({ applicant, variant = 'dark' }) {
   const steps = getAutomationTimeline(applicant)
   const isDark = variant === 'dark'
   const stateClass = isDark ? darkStateClass : lightStateClass
+  const mutedText = isDark ? 'text-zinc-500' : 'text-[#6B7280]'
+
+  function formatEventTime(dateValue) {
+    if (!dateValue) return ''
+    return new Intl.DateTimeFormat('en-US', {
+      month: 'short',
+      day: 'numeric',
+      hour: 'numeric',
+      minute: '2-digit',
+    }).format(new Date(dateValue))
+  }
 
   return (
     <section className={`rounded-lg border p-5 shadow-sm ${
@@ -42,6 +53,11 @@ function AutomationTimeline({ applicant, variant = 'dark' }) {
                 {step.description ? (
                   <p className={`mt-1 text-sm leading-6 ${isDark ? 'text-zinc-400' : 'text-[#6B7280]'}`}>
                     {step.description}
+                  </p>
+                ) : null}
+                {step.createdAt ? (
+                  <p className={`mt-2 text-xs font-semibold ${mutedText}`}>
+                    {formatEventTime(step.createdAt)}
                   </p>
                 ) : null}
               </div>

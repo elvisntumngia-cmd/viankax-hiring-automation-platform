@@ -105,6 +105,16 @@ function documentFilesFromRows(rows = []) {
     }))
 }
 
+function automationEventsFromRows(rows = []) {
+  return rows.map((event) => ({
+    type: event.event_type,
+    status: event.event_status,
+    label: event.event_label,
+    description: event.metadata?.description ?? event.metadata?.note ?? '',
+    createdAt: event.created_at,
+  }))
+}
+
 function mapApplicant(row) {
   const scores = row.candidate_scores?.[0] ?? {}
   const recommendation = row.ai_recommendations?.[0] ?? {}
@@ -146,6 +156,7 @@ function mapApplicant(row) {
       : 'Recently submitted',
     documents: documentsFromRows(row.applicant_documents),
     documentFiles: documentFilesFromRows(row.applicant_documents),
+    automationEvents: automationEventsFromRows(row.automation_events),
     knockout: row.knockout_result,
     knockoutResult: row.knockout_result,
     aiSummary: recommendation.summary ?? 'AI recommendation has not been generated yet.',
@@ -197,6 +208,7 @@ export async function fetchApplicants() {
       clients(name),
       jobs(title, location, clients(name)),
       applicant_documents(document_type, file_name, storage_bucket, storage_path, status),
+      automation_events(event_type, event_status, event_label, metadata, created_at),
       screening_answers(question, answer),
       candidate_scores(
         resume_score,
@@ -274,17 +286,50 @@ export async function submitApplicationToSupabase(application, uploadFiles = {})
     summary: application.aiRecommendation.summary,
     risk_flags: application.knockoutFlags ?? [],
   }
-  const automationEventRow = {
-    applicant_id: applicantId,
-    event_type: 'application_submitted',
-    event_status: 'complete',
-    event_label: 'Application Submitted',
-    metadata: {
-      source: 'Applicant Portal',
-      jobTitle: application.jobTitle,
-      knockoutResult: application.knockoutResult,
+  const automationEventRows = [
+    {
+      applicant_id: applicantId,
+      event_type: 'application_submitted',
+      event_status: 'complete',
+      event_label: 'Application Submitted',
+      metadata: {
+        source: 'Applicant Portal',
+        jobTitle: application.jobTitle,
+        knockoutResult: application.knockoutResult,
+        description: 'Candidate submitted the application through the Applicant Portal.',
+      },
     },
-  }
+    {
+      applicant_id: applicantId,
+      event_type: 'documents_uploaded',
+      event_status: Object.keys(uploadedDocuments).length ? 'complete' : 'pending',
+      event_label: 'Documents Uploaded',
+      metadata: {
+        uploadedCount: Object.keys(uploadedDocuments).length,
+        description: Object.keys(uploadedDocuments).length
+          ? 'Applicant documents were uploaded to Supabase Storage.'
+          : 'Document upload records were created, but no file objects were attached.',
+      },
+    },
+    {
+      applicant_id: applicantId,
+      event_type: 'dashboard_sync',
+      event_status: 'complete',
+      event_label: 'Dashboard Sync',
+      metadata: {
+        description: 'Applicant record, scores, recommendation, documents, and answers were synced to the HR dashboard.',
+      },
+    },
+    {
+      applicant_id: applicantId,
+      event_type: 'pending_ai_review',
+      event_status: 'current',
+      event_label: 'Pending AI Review',
+      metadata: {
+        description: 'Resume parsing and AI screening are ready for the automation layer.',
+      },
+    },
+  ]
   const screeningRows = application.screeningAnswers.map(([question, answer]) => ({
     applicant_id: applicantId,
     question,
@@ -295,7 +340,7 @@ export async function submitApplicationToSupabase(application, uploadFiles = {})
   const writeOperations = [
     supabase.from('candidate_scores').insert(scoreRow),
     supabase.from('ai_recommendations').insert(recommendationRow),
-    supabase.from('automation_events').insert(automationEventRow),
+    supabase.from('automation_events').insert(automationEventRows),
     supabase.from('screening_answers').insert(screeningRows),
     supabase.from('applicant_documents').insert(documentRowsFromApplication(applicantId, application, uploadedDocuments)),
   ]

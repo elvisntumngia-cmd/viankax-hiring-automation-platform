@@ -46,6 +46,19 @@ export function getScoreTone(score) {
 }
 
 export function getAutomationTimeline(applicant) {
+  if (applicant.automationEvents?.length) {
+    return applicant.automationEvents.map((event) => ({
+      label: event.label,
+      state: event.status === 'complete'
+        ? 'complete'
+        : event.status === 'current'
+          ? 'current'
+          : 'pending',
+      description: event.description,
+      createdAt: event.createdAt,
+    }))
+  }
+
   if (applicant.automationTimeline?.length) return applicant.automationTimeline
 
   const progress = stageProgress[applicant.stage] ?? 0
