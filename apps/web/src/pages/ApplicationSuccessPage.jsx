@@ -36,6 +36,15 @@ function ApplicationSuccessPage() {
           >
             Knockout screening: {submission.knockoutResult}
           </div>
+          <div
+            className={`mt-3 rounded-md border p-3 text-sm font-medium ${
+              submission.syncedToSupabase
+                ? 'border-blue-200 bg-blue-50 text-blue-800'
+                : 'border-amber-200 bg-amber-50 text-amber-800'
+            }`}
+          >
+            Database sync: {submission.syncedToSupabase ? 'Saved to Supabase' : 'Saved locally for demo fallback'}
+          </div>
         </div>
       ) : null}
 

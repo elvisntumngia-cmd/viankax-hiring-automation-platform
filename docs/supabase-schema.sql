@@ -200,15 +200,30 @@ create policy "Public can read candidate scores for demo"
   on candidate_scores for select
   using (true);
 
+drop policy if exists "Public can create candidate scores" on candidate_scores;
+create policy "Public can create candidate scores"
+  on candidate_scores for insert
+  with check (true);
+
 drop policy if exists "Public can read ai recommendations for demo" on ai_recommendations;
 create policy "Public can read ai recommendations for demo"
   on ai_recommendations for select
   using (true);
 
+drop policy if exists "Public can create ai recommendations" on ai_recommendations;
+create policy "Public can create ai recommendations"
+  on ai_recommendations for insert
+  with check (true);
+
 drop policy if exists "Public can read automation events for demo" on automation_events;
 create policy "Public can read automation events for demo"
   on automation_events for select
   using (true);
+
+drop policy if exists "Public can create automation events" on automation_events;
+create policy "Public can create automation events"
+  on automation_events for insert
+  with check (true);
 
 drop policy if exists "Public can read pipeline history for demo" on pipeline_stage_history;
 create policy "Public can read pipeline history for demo"

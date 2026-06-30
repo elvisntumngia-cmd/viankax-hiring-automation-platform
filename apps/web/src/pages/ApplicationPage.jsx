@@ -2,8 +2,8 @@ import { useMemo, useState } from 'react'
 import { useNavigate, useParams } from 'react-router-dom'
 import { jobs } from '../data/dummyJobs'
 import useSupabaseData from '../hooks/useSupabaseData'
-import { fetchJobs } from '../services/supabaseData'
-import { formatAppliedAt, saveSubmittedApplication } from '../utils/applicationStorage'
+import { fetchJobs, submitApplicationToSupabase } from '../services/supabaseData'
+import { formatAppliedAt, saveLastApplication, saveSubmittedApplication } from '../utils/applicationStorage'
 
 const blankJob = {
   companyName: '',
@@ -186,6 +186,8 @@ function ApplicationPage() {
   const [currentStep, setCurrentStep] = useState(0)
   const [form, setForm] = useState(initialForm)
   const [errors, setErrors] = useState({})
+  const [isSubmitting, setIsSubmitting] = useState(false)
+  const [submitError, setSubmitError] = useState('')
 
   const progress = Math.round(((currentStep + 1) / steps.length) * 100)
   const knockoutFlags = useMemo(() => getKnockoutFlags(form), [form])
@@ -322,8 +324,11 @@ function ApplicationPage() {
     setCurrentStep((step) => Math.max(step - 1, 0))
   }
 
-  function submitApplication() {
+  async function submitApplication() {
     if (!validateStep(5)) return
+    if (isSubmitting) return
+    setIsSubmitting(true)
+    setSubmitError('')
 
     const submittedAt = new Date()
     const payload = {
@@ -335,6 +340,7 @@ function ApplicationPage() {
       role: job.title,
       jobTitle: job.title,
       jobId: job.id,
+      clientId: job.clientId,
       client: job.client,
       location: job.location,
       stage: 'New Applicant',
@@ -393,8 +399,23 @@ function ApplicationPage() {
       submittedAt: submittedAt.toISOString(),
     }
 
-    saveSubmittedApplication(payload)
-    navigate('/success')
+    try {
+      const result = await submitApplicationToSupabase(payload)
+
+      if (result.ok) {
+        saveLastApplication({ ...payload, id: result.applicantId, syncedToSupabase: true })
+      } else {
+        saveSubmittedApplication({ ...payload, syncedToSupabase: false })
+      }
+
+      navigate('/success')
+    } catch (error) {
+      saveSubmittedApplication({ ...payload, syncedToSupabase: false })
+      setSubmitError(`Supabase submission failed, so the application was saved locally. ${error.message}`)
+      navigate('/success')
+    } finally {
+      setIsSubmitting(false)
+    }
   }
 
   function renderText(group, key, label, type = 'text') {
@@ -717,6 +738,11 @@ function ApplicationPage() {
       </div>
 
       <div className="mt-6 flex flex-col gap-3 rounded-lg border border-[#E5E7EB] bg-white p-4 shadow-sm sm:flex-row sm:items-center sm:justify-between sm:p-5">
+        {submitError ? (
+          <p className="rounded-md border border-amber-200 bg-amber-50 px-3 py-2 text-sm font-semibold text-amber-800">
+            {submitError}
+          </p>
+        ) : null}
         <button type="button" onClick={goBack} disabled={currentStep === 0} className="rounded-md border border-[#D1D5DB] bg-white px-5 py-3 font-semibold text-[#111827] disabled:cursor-not-allowed disabled:opacity-40">
           Back
         </button>
@@ -725,8 +751,8 @@ function ApplicationPage() {
             {currentStep === 0 && !form.resume.fileName ? 'Continue' : 'Next step'}
           </button>
         ) : (
-          <button type="button" onClick={submitApplication} className="rounded-md bg-[#0084FF] px-5 py-3 font-semibold text-white">
-            Submit Application
+          <button type="button" onClick={submitApplication} disabled={isSubmitting} className="rounded-md bg-[#0084FF] px-5 py-3 font-semibold text-white disabled:cursor-wait disabled:opacity-70">
+            {isSubmitting ? 'Submitting...' : 'Submit Application'}
           </button>
         )}
       </div>

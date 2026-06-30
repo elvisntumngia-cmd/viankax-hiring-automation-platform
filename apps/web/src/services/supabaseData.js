@@ -3,6 +3,7 @@ import { isSupabaseConfigured, supabase } from '../lib/supabaseClient'
 function mapJob(row) {
   return {
     id: row.id,
+    clientId: row.client_id,
     title: row.title,
     client: row.clients?.name ?? 'ViankaX Client',
     location: row.location,
@@ -13,6 +14,28 @@ function mapJob(row) {
     requirements: row.requirements ?? [],
     responsibilities: row.responsibilities ?? [],
   }
+}
+
+function isUuid(value) {
+  return /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(value)
+}
+
+function documentRowsFromApplication(applicantId, application) {
+  const documents = [
+    ['resume', application.documents?.resume, 'resumes'],
+    ['license', application.documents?.license, 'licenses'],
+    ['government_id', application.documents?.governmentId, 'government-ids'],
+    ['cpr', application.documents?.cpr, 'certifications'],
+    ['first_aid', application.documents?.firstAid, 'certifications'],
+    ['firearms', application.documents?.firearms, 'certifications'],
+  ]
+
+  return documents.map(([documentType, status, bucket]) => ({
+    applicant_id: applicantId,
+    document_type: documentType,
+    storage_bucket: bucket,
+    status: status ?? 'Not Uploaded',
+  }))
 }
 
 function documentsFromRows(rows = []) {
@@ -145,4 +168,82 @@ export async function fetchApplicants() {
 
   if (error) throw error
   return data.map(mapApplicant)
+}
+
+export async function submitApplicationToSupabase(application) {
+  if (!isSupabaseConfigured) {
+    return { ok: false, error: new Error('Supabase is not configured.') }
+  }
+
+  const { data: applicant, error: applicantError } = await supabase
+    .from('applicants')
+    .insert({
+      client_id: isUuid(application.clientId) ? application.clientId : null,
+      job_id: isUuid(application.jobId) ? application.jobId : null,
+      full_name: application.name,
+      email: application.email,
+      phone: application.phone,
+      location: application.location,
+      current_stage: application.stage,
+      status: application.status,
+      knockout_result: application.knockoutResult,
+      license_status: application.licenseStatus,
+      interview_status: application.interviewStatus,
+      final_decision: application.decision,
+      notes: application.notes,
+      source: 'Applicant Portal',
+      submitted_at: application.submittedAt,
+    })
+    .select('id')
+    .single()
+
+  if (applicantError) throw applicantError
+
+  const applicantId = applicant.id
+  const scoreRow = {
+    applicant_id: applicantId,
+    resume_score: application.scores.resumeScore,
+    eligibility_score: application.scores.eligibilityScore,
+    screening_score: application.scores.screeningScore,
+    voice_interview_score: application.scores.voiceInterviewScore,
+    overall_candidate_score: application.scores.overallCandidateScore,
+  }
+  const recommendationRow = {
+    applicant_id: applicantId,
+    recommendation: application.aiRecommendation.label,
+    confidence: application.aiRecommendation.confidence,
+    summary: application.aiRecommendation.summary,
+    risk_flags: application.knockoutFlags ?? [],
+  }
+  const automationEventRow = {
+    applicant_id: applicantId,
+    event_type: 'application_submitted',
+    event_status: 'complete',
+    event_label: 'Application Submitted',
+    metadata: {
+      source: 'Applicant Portal',
+      jobTitle: application.jobTitle,
+      knockoutResult: application.knockoutResult,
+    },
+  }
+  const screeningRows = application.screeningAnswers.map(([question, answer]) => ({
+    applicant_id: applicantId,
+    question,
+    answer,
+    category: 'application',
+  }))
+
+  const writeOperations = [
+    supabase.from('candidate_scores').insert(scoreRow),
+    supabase.from('ai_recommendations').insert(recommendationRow),
+    supabase.from('automation_events').insert(automationEventRow),
+    supabase.from('screening_answers').insert(screeningRows),
+    supabase.from('applicant_documents').insert(documentRowsFromApplication(applicantId, application)),
+  ]
+
+  const results = await Promise.all(writeOperations)
+  const writeError = results.find((result) => result.error)?.error
+  if (writeError) throw writeError
+
+  return { ok: true, applicantId }
 }

@@ -29,6 +29,10 @@ export function saveSubmittedApplication(application) {
   window.localStorage.setItem(LAST_APPLICATION_KEY, JSON.stringify(application))
 }
 
+export function saveLastApplication(application) {
+  window.localStorage.setItem(LAST_APPLICATION_KEY, JSON.stringify(application))
+}
+
 export function formatAppliedAt(date = new Date()) {
   return new Intl.DateTimeFormat('en-US', {
     month: 'short',
