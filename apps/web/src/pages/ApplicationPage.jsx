@@ -149,7 +149,7 @@ function FormField({ label, error, children }) {
 
 function UploadBox({ label, fileName, onFile, optional = false }) {
   function handleFile(file) {
-    if (file) onFile(file.name)
+    if (file) onFile(file)
   }
 
   return (
@@ -185,6 +185,7 @@ function ApplicationPage() {
   const job = availableJobs.find((item) => item.id === jobId) ?? availableJobs[0]
   const [currentStep, setCurrentStep] = useState(0)
   const [form, setForm] = useState(initialForm)
+  const [uploadFiles, setUploadFiles] = useState({})
   const [errors, setErrors] = useState({})
   const [isSubmitting, setIsSubmitting] = useState(false)
   const [submitError, setSubmitError] = useState('')
@@ -202,8 +203,9 @@ function ApplicationPage() {
     setErrors((current) => ({ ...current, [`${group}.${key}`]: undefined }))
   }
 
-  function setUpload(key, value) {
-    setGroup('uploads', key, value)
+  function setUpload(key, file) {
+    setUploadFiles((current) => ({ ...current, [key]: file }))
+    setGroup('uploads', key, file.name)
   }
 
   function toggleArray(group, key, value) {
@@ -400,7 +402,7 @@ function ApplicationPage() {
     }
 
     try {
-      const result = await submitApplicationToSupabase(payload)
+      const result = await submitApplicationToSupabase(payload, uploadFiles)
 
       if (result.ok) {
         saveLastApplication({ ...payload, id: result.applicantId, syncedToSupabase: true })
@@ -499,8 +501,9 @@ function ApplicationPage() {
               <UploadBox
                 label="Resume"
                 fileName={form.resume.fileName}
-                onFile={(fileName) => {
-                  setForm((current) => ({ ...current, resume: { fileName, skipped: false }, uploads: { ...current.uploads, resume: fileName } }))
+                onFile={(file) => {
+                  setUploadFiles((current) => ({ ...current, resume: file }))
+                  setForm((current) => ({ ...current, resume: { fileName: file.name, skipped: false }, uploads: { ...current.uploads, resume: file.name } }))
                 }}
               />
             </div>
@@ -655,12 +658,12 @@ function ApplicationPage() {
             {renderText('compliance', 'expirationDate', 'Expiration Date', 'date')}
           </section>
           <section className="grid gap-4 sm:grid-cols-2 xl:grid-cols-3">
-            <UploadBox label="Resume" fileName={form.uploads.resume || form.resume.fileName} onFile={(fileName) => setUpload('resume', fileName)} />
-            <UploadBox label="Guard Card / License" fileName={form.uploads.guardCard} onFile={(fileName) => setUpload('guardCard', fileName)} />
-            <UploadBox label="Government ID" fileName={form.uploads.governmentId} onFile={(fileName) => setUpload('governmentId', fileName)} />
-            <UploadBox label="CPR Certification" optional fileName={form.uploads.cpr} onFile={(fileName) => setUpload('cpr', fileName)} />
-            <UploadBox label="First Aid Certification" optional fileName={form.uploads.firstAid} onFile={(fileName) => setUpload('firstAid', fileName)} />
-            <UploadBox label="Firearms Certification" optional fileName={form.uploads.firearms} onFile={(fileName) => setUpload('firearms', fileName)} />
+            <UploadBox label="Resume" fileName={form.uploads.resume || form.resume.fileName} onFile={(file) => setUpload('resume', file)} />
+            <UploadBox label="Guard Card / License" fileName={form.uploads.guardCard} onFile={(file) => setUpload('guardCard', file)} />
+            <UploadBox label="Government ID" fileName={form.uploads.governmentId} onFile={(file) => setUpload('governmentId', file)} />
+            <UploadBox label="CPR Certification" optional fileName={form.uploads.cpr} onFile={(file) => setUpload('cpr', file)} />
+            <UploadBox label="First Aid Certification" optional fileName={form.uploads.firstAid} onFile={(file) => setUpload('firstAid', file)} />
+            <UploadBox label="Firearms Certification" optional fileName={form.uploads.firearms} onFile={(file) => setUpload('firearms', file)} />
           </section>
           {['uploads.resume', 'uploads.guardCard', 'uploads.governmentId'].map((name) =>
             errors[name] ? <p key={name} className="text-sm text-red-600">{errors[name]}</p> : null,

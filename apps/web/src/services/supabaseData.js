@@ -20,21 +20,53 @@ function isUuid(value) {
   return /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(value)
 }
 
-function documentRowsFromApplication(applicantId, application) {
-  const documents = [
-    ['resume', application.documents?.resume, 'resumes'],
-    ['license', application.documents?.license, 'licenses'],
-    ['government_id', application.documents?.governmentId, 'government-ids'],
-    ['cpr', application.documents?.cpr, 'certifications'],
-    ['first_aid', application.documents?.firstAid, 'certifications'],
-    ['firearms', application.documents?.firearms, 'certifications'],
-  ]
+const documentDefinitions = [
+  { key: 'resume', documentType: 'resume', bucket: 'resumes', statusKey: 'resume' },
+  { key: 'guardCard', documentType: 'license', bucket: 'licenses', statusKey: 'license' },
+  { key: 'governmentId', documentType: 'government_id', bucket: 'government-ids', statusKey: 'governmentId' },
+  { key: 'cpr', documentType: 'cpr', bucket: 'certifications', statusKey: 'cpr' },
+  { key: 'firstAid', documentType: 'first_aid', bucket: 'certifications', statusKey: 'firstAid' },
+  { key: 'firearms', documentType: 'firearms', bucket: 'certifications', statusKey: 'firearms' },
+]
 
-  return documents.map(([documentType, status, bucket]) => ({
+function safeFileName(fileName) {
+  return fileName.replace(/[^a-z0-9.\-_]/gi, '-').toLowerCase()
+}
+
+async function uploadApplicationDocuments(applicantId, uploadFiles = {}) {
+  const uploadedDocuments = {}
+
+  for (const definition of documentDefinitions) {
+    const file = uploadFiles[definition.key]
+
+    if (file) {
+      const storagePath = `${applicantId}/${definition.documentType}-${Date.now()}-${safeFileName(file.name)}`
+      const { error } = await supabase.storage
+        .from(definition.bucket)
+        .upload(storagePath, file, { upsert: true })
+
+      if (error) throw error
+
+      uploadedDocuments[definition.statusKey] = {
+        fileName: file.name,
+        storageBucket: definition.bucket,
+        storagePath,
+        status: 'Uploaded',
+      }
+    }
+  }
+
+  return uploadedDocuments
+}
+
+function documentRowsFromApplication(applicantId, application, uploadedDocuments = {}) {
+  return documentDefinitions.map((definition) => ({
     applicant_id: applicantId,
-    document_type: documentType,
-    storage_bucket: bucket,
-    status: status ?? 'Not Uploaded',
+    document_type: definition.documentType,
+    file_name: uploadedDocuments[definition.statusKey]?.fileName ?? null,
+    storage_bucket: uploadedDocuments[definition.statusKey]?.storageBucket ?? definition.bucket,
+    storage_path: uploadedDocuments[definition.statusKey]?.storagePath ?? null,
+    status: uploadedDocuments[definition.statusKey]?.status ?? application.documents?.[definition.statusKey] ?? 'Not Uploaded',
   }))
 }
 
@@ -170,7 +202,7 @@ export async function fetchApplicants() {
   return data.map(mapApplicant)
 }
 
-export async function submitApplicationToSupabase(application) {
+export async function submitApplicationToSupabase(application, uploadFiles = {}) {
   if (!isSupabaseConfigured) {
     return { ok: false, error: new Error('Supabase is not configured.') }
   }
@@ -200,6 +232,7 @@ export async function submitApplicationToSupabase(application) {
   if (applicantError) throw applicantError
 
   const applicantId = applicant.id
+  const uploadedDocuments = await uploadApplicationDocuments(applicantId, uploadFiles)
   const scoreRow = {
     applicant_id: applicantId,
     resume_score: application.scores.resumeScore,
@@ -238,7 +271,7 @@ export async function submitApplicationToSupabase(application) {
     supabase.from('ai_recommendations').insert(recommendationRow),
     supabase.from('automation_events').insert(automationEventRow),
     supabase.from('screening_answers').insert(screeningRows),
-    supabase.from('applicant_documents').insert(documentRowsFromApplication(applicantId, application)),
+    supabase.from('applicant_documents').insert(documentRowsFromApplication(applicantId, application, uploadedDocuments)),
   ]
 
   const results = await Promise.all(writeOperations)
