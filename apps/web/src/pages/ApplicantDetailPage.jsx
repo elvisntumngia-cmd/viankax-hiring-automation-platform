@@ -5,7 +5,7 @@ import CandidateScoreCard from '../components/CandidateScoreCard'
 import PageHeader from '../components/PageHeader'
 import { applicants as dummyApplicants } from '../data/dummyApplicants'
 import useSupabaseData from '../hooks/useSupabaseData'
-import { fetchApplicants } from '../services/supabaseData'
+import { createDocumentSignedUrl, fetchApplicants } from '../services/supabaseData'
 import { getStoredApplications } from '../utils/applicationStorage'
 import { getCandidateScores } from '../utils/candidateInsights'
 
@@ -43,6 +43,20 @@ const documentRows = [
   ['First aid certification', 'firstAid'],
   ['Firearms certification', 'firearms'],
 ]
+
+const documentLabels = {
+  resume: 'Resume',
+  license: 'License / guard card',
+  government_id: 'Government ID',
+  cpr: 'CPR certification',
+  first_aid: 'First aid certification',
+  firearms: 'Firearms certification',
+}
+
+async function openDocument(document) {
+  const signedUrl = await createDocumentSignedUrl(document)
+  window.open(signedUrl, '_blank', 'noopener,noreferrer')
+}
 
 function ApplicantDetailPage() {
   const { applicantId } = useParams()
@@ -144,9 +158,29 @@ function ApplicantDetailPage() {
             <DetailRow key={key} label={label} value={applicant.documents?.[key] ?? 'Not Uploaded'} />
           ))}
           <DetailRow label="License status" value={applicant.licenseStatus} />
-          <p className="mt-4 rounded-md border border-white/[0.08] bg-white/[0.04] p-3 text-zinc-400">
-            Uploads are demo placeholders in Phase 1. Supabase Storage will handle real files in Phase 2.
-          </p>
+          {applicant.documentFiles?.length ? (
+            <div className="mt-4 space-y-2">
+              {applicant.documentFiles.map((document) => (
+                <div key={`${document.bucket}-${document.path}`} className="flex flex-col gap-3 rounded-md border border-white/[0.08] bg-white/[0.04] p-3 sm:flex-row sm:items-center sm:justify-between">
+                  <div className="min-w-0">
+                    <p className="font-semibold text-white">{documentLabels[document.type] ?? document.type}</p>
+                    <p className="mt-1 truncate text-xs text-zinc-500">{document.fileName}</p>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() => openDocument(document)}
+                    className="w-fit rounded-md border border-white/[0.12] px-3 py-2 text-sm font-semibold text-white hover:border-[#0084FF] hover:text-[#0084FF]"
+                  >
+                    View file
+                  </button>
+                </div>
+              ))}
+            </div>
+          ) : (
+            <p className="mt-4 rounded-md border border-white/[0.08] bg-white/[0.04] p-3 text-zinc-400">
+              No Supabase Storage files are attached yet.
+            </p>
+          )}
         </InfoCard>
 
         <InfoCard title="AI resume summary">

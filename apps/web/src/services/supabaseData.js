@@ -93,6 +93,18 @@ function documentsFromRows(rows = []) {
   return documents
 }
 
+function documentFilesFromRows(rows = []) {
+  return rows
+    .filter((document) => document.storage_bucket && document.storage_path)
+    .map((document) => ({
+      type: document.document_type,
+      fileName: document.file_name ?? document.document_type,
+      bucket: document.storage_bucket,
+      path: document.storage_path,
+      status: document.status,
+    }))
+}
+
 function mapApplicant(row) {
   const scores = row.candidate_scores?.[0] ?? {}
   const recommendation = row.ai_recommendations?.[0] ?? {}
@@ -133,6 +145,7 @@ function mapApplicant(row) {
       }).format(new Date(row.submitted_at))
       : 'Recently submitted',
     documents: documentsFromRows(row.applicant_documents),
+    documentFiles: documentFilesFromRows(row.applicant_documents),
     knockout: row.knockout_result,
     knockoutResult: row.knockout_result,
     aiSummary: recommendation.summary ?? 'AI recommendation has not been generated yet.',
@@ -183,7 +196,7 @@ export async function fetchApplicants() {
       *,
       clients(name),
       jobs(title, location, clients(name)),
-      applicant_documents(document_type, status),
+      applicant_documents(document_type, file_name, storage_bucket, storage_path, status),
       screening_answers(question, answer),
       candidate_scores(
         resume_score,
@@ -200,6 +213,19 @@ export async function fetchApplicants() {
 
   if (error) throw error
   return data.map(mapApplicant)
+}
+
+export async function createDocumentSignedUrl(document) {
+  if (!isSupabaseConfigured) {
+    throw new Error('Supabase is not configured.')
+  }
+
+  const { data, error } = await supabase.storage
+    .from(document.bucket)
+    .createSignedUrl(document.path, 60)
+
+  if (error) throw error
+  return data.signedUrl
 }
 
 export async function submitApplicationToSupabase(application, uploadFiles = {}) {
