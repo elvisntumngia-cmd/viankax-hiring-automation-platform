@@ -1,6 +1,8 @@
 import { Link, useParams } from 'react-router-dom'
 import PageHeader from '../components/PageHeader'
 import { jobs } from '../data/dummyJobs'
+import useSupabaseData from '../hooks/useSupabaseData'
+import { fetchJobs } from '../services/supabaseData'
 
 function BulletList({ title, items, accent = '#0084FF' }) {
   return (
@@ -23,10 +25,17 @@ function BulletList({ title, items, accent = '#0084FF' }) {
 
 function JobDetailsPage() {
   const { jobId } = useParams()
-  const job = jobs.find((item) => item.id === jobId) ?? jobs[0]
+  const { data: availableJobs, status, error } = useSupabaseData(fetchJobs, jobs)
+  const job = availableJobs.find((item) => item.id === jobId) ?? availableJobs[0]
 
   return (
     <section>
+      {status === 'error' ? (
+        <div className="mb-4 rounded-lg border border-amber-200 bg-amber-50 p-4 text-sm text-amber-800">
+          Supabase job details could not load, so demo data is showing. {error?.message}
+        </div>
+      ) : null}
+
       <PageHeader
         eyebrow={job.client}
         title={job.title}

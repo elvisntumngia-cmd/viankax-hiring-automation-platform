@@ -1,8 +1,12 @@
 import { Link } from 'react-router-dom'
 import PageHeader from '../components/PageHeader'
 import { jobs } from '../data/dummyJobs'
+import useSupabaseData from '../hooks/useSupabaseData'
+import { fetchJobs } from '../services/supabaseData'
 
 function JobsPage() {
+  const { data: availableJobs, status, error } = useSupabaseData(fetchJobs, jobs)
+
   return (
     <section>
       <PageHeader
@@ -11,8 +15,14 @@ function JobsPage() {
         description="Browse current openings and start a structured application. These listings can be embedded into a client career page or linked from job boards, QR codes, referrals, SMS, and email campaigns."
       />
 
+      {status === 'error' ? (
+        <div className="mb-4 rounded-lg border border-amber-200 bg-amber-50 p-4 text-sm text-amber-800">
+          Supabase jobs could not load, so demo jobs are showing. {error?.message}
+        </div>
+      ) : null}
+
       <div className="grid gap-4 sm:grid-cols-2 2xl:grid-cols-3">
-        {jobs.map((job) => (
+        {availableJobs.map((job) => (
           <article
             key={job.id}
             className="rounded-lg border border-[#E5E7EB] bg-white p-4 shadow-sm sm:p-5"

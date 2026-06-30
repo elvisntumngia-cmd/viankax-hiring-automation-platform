@@ -276,3 +276,60 @@ on conflict (applicant_id) do update set
   summary = excluded.summary,
   risk_flags = excluded.risk_flags,
   updated_at = now();
+
+delete from applicant_documents
+where applicant_id in (
+  '10000000-0000-0000-0000-000000000001',
+  '10000000-0000-0000-0000-000000000002',
+  '10000000-0000-0000-0000-000000000003',
+  '10000000-0000-0000-0000-000000000004',
+  '10000000-0000-0000-0000-000000000005'
+);
+
+insert into applicant_documents (applicant_id, document_type, file_name, storage_bucket, storage_path, status)
+values
+  ('10000000-0000-0000-0000-000000000001', 'resume', 'john-carter-resume.pdf', 'resumes', 'john-carter/resume.pdf', 'Uploaded'),
+  ('10000000-0000-0000-0000-000000000001', 'license', null, 'licenses', null, 'Pending'),
+  ('10000000-0000-0000-0000-000000000001', 'government_id', 'john-carter-id.png', 'government-ids', 'john-carter/id.png', 'Uploaded'),
+  ('10000000-0000-0000-0000-000000000002', 'resume', 'melissa-grant-resume.pdf', 'resumes', 'melissa-grant/resume.pdf', 'Uploaded'),
+  ('10000000-0000-0000-0000-000000000002', 'license', 'melissa-grant-guard-card.pdf', 'licenses', 'melissa-grant/license.pdf', 'Verified'),
+  ('10000000-0000-0000-0000-000000000002', 'government_id', 'melissa-grant-id.png', 'government-ids', 'melissa-grant/id.png', 'Uploaded'),
+  ('10000000-0000-0000-0000-000000000003', 'resume', 'david-brooks-resume.pdf', 'resumes', 'david-brooks/resume.pdf', 'Uploaded'),
+  ('10000000-0000-0000-0000-000000000003', 'license', null, 'licenses', null, 'Missing'),
+  ('10000000-0000-0000-0000-000000000003', 'government_id', 'david-brooks-id.png', 'government-ids', 'david-brooks/id.png', 'Uploaded'),
+  ('10000000-0000-0000-0000-000000000003', 'firearms', 'david-brooks-firearms.pdf', 'certifications', 'david-brooks/firearms.pdf', 'Uploaded'),
+  ('10000000-0000-0000-0000-000000000004', 'resume', 'angela-morris-resume.pdf', 'resumes', 'angela-morris/resume.pdf', 'Uploaded'),
+  ('10000000-0000-0000-0000-000000000004', 'license', 'angela-morris-hha.pdf', 'licenses', 'angela-morris/license.pdf', 'Verified'),
+  ('10000000-0000-0000-0000-000000000004', 'government_id', 'angela-morris-id.png', 'government-ids', 'angela-morris/id.png', 'Uploaded'),
+  ('10000000-0000-0000-0000-000000000004', 'cpr', 'angela-morris-cpr.pdf', 'certifications', 'angela-morris/cpr.pdf', 'Uploaded'),
+  ('10000000-0000-0000-0000-000000000004', 'first_aid', 'angela-morris-first-aid.pdf', 'certifications', 'angela-morris/first-aid.pdf', 'Uploaded'),
+  ('10000000-0000-0000-0000-000000000005', 'resume', null, 'resumes', null, 'Not Uploaded'),
+  ('10000000-0000-0000-0000-000000000005', 'license', null, 'licenses', null, 'Not Uploaded'),
+  ('10000000-0000-0000-0000-000000000005', 'government_id', null, 'government-ids', null, 'Not Uploaded');
+
+delete from screening_answers
+where applicant_id in (
+  '10000000-0000-0000-0000-000000000001',
+  '10000000-0000-0000-0000-000000000002',
+  '10000000-0000-0000-0000-000000000003',
+  '10000000-0000-0000-0000-000000000004',
+  '10000000-0000-0000-0000-000000000005'
+);
+
+insert into screening_answers (applicant_id, question, answer, category)
+values
+  ('10000000-0000-0000-0000-000000000001', 'Why interested?', 'Looking for a stable security role with growth opportunities.', 'application'),
+  ('10000000-0000-0000-0000-000000000001', 'Experience', 'Worked event security and front desk access control for 1 year.', 'application'),
+  ('10000000-0000-0000-0000-000000000001', 'Standing long periods', 'Yes, comfortable with long standing posts.', 'application'),
+  ('10000000-0000-0000-0000-000000000002', 'Why interested?', 'Wants a long-term security role with consistent overnight shifts.', 'application'),
+  ('10000000-0000-0000-0000-000000000002', 'Experience', 'Three years commercial property and lobby security.', 'application'),
+  ('10000000-0000-0000-0000-000000000002', 'Public interaction', 'Comfortable de-escalating visitor and tenant issues.', 'application'),
+  ('10000000-0000-0000-0000-000000000003', 'Why interested?', 'Seeking armed security position with steady hours.', 'application'),
+  ('10000000-0000-0000-0000-000000000003', 'Experience', 'Former patrol officer and two years armed site security.', 'application'),
+  ('10000000-0000-0000-0000-000000000003', 'Incident reporting', 'Comfortable writing reports and escalating properly.', 'application'),
+  ('10000000-0000-0000-0000-000000000004', 'Why interested?', 'Enjoys supporting clients in home care settings.', 'application'),
+  ('10000000-0000-0000-0000-000000000004', 'Experience', 'Five years HHA experience with weekend availability.', 'application'),
+  ('10000000-0000-0000-0000-000000000004', 'Reliability', 'Has reliable car and flexible shift coverage.', 'application'),
+  ('10000000-0000-0000-0000-000000000005', 'Transportation', 'No reliable transportation.', 'application'),
+  ('10000000-0000-0000-0000-000000000005', 'Background check', 'Did not consent.', 'application'),
+  ('10000000-0000-0000-0000-000000000005', 'Availability', 'Cannot work weekends or nights.', 'application');

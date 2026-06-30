@@ -160,17 +160,67 @@ create policy "Public can read open jobs"
   on jobs for select
   using (status = 'open');
 
+drop policy if exists "Public can read clients for demo" on clients;
+create policy "Public can read clients for demo"
+  on clients for select
+  using (true);
+
+drop policy if exists "Public can read applicants for demo" on applicants;
+create policy "Public can read applicants for demo"
+  on applicants for select
+  using (true);
+
 drop policy if exists "Public can submit applicants" on applicants;
 create policy "Public can submit applicants"
   on applicants for insert
   with check (true);
+
+drop policy if exists "Public can read screening answers for demo" on screening_answers;
+create policy "Public can read screening answers for demo"
+  on screening_answers for select
+  using (true);
 
 drop policy if exists "Public can submit screening answers" on screening_answers;
 create policy "Public can submit screening answers"
   on screening_answers for insert
   with check (true);
 
+drop policy if exists "Public can read document records for demo" on applicant_documents;
+create policy "Public can read document records for demo"
+  on applicant_documents for select
+  using (true);
+
 drop policy if exists "Public can create document records" on applicant_documents;
 create policy "Public can create document records"
   on applicant_documents for insert
   with check (true);
+
+drop policy if exists "Public can read candidate scores for demo" on candidate_scores;
+create policy "Public can read candidate scores for demo"
+  on candidate_scores for select
+  using (true);
+
+drop policy if exists "Public can read ai recommendations for demo" on ai_recommendations;
+create policy "Public can read ai recommendations for demo"
+  on ai_recommendations for select
+  using (true);
+
+drop policy if exists "Public can read automation events for demo" on automation_events;
+create policy "Public can read automation events for demo"
+  on automation_events for select
+  using (true);
+
+drop policy if exists "Public can read pipeline history for demo" on pipeline_stage_history;
+create policy "Public can read pipeline history for demo"
+  on pipeline_stage_history for select
+  using (true);
+
+drop policy if exists "Public can read voice interviews for demo" on voice_interviews;
+create policy "Public can read voice interviews for demo"
+  on voice_interviews for select
+  using (true);
+
+drop policy if exists "Public can read interview schedules for demo" on interview_schedules;
+create policy "Public can read interview schedules for demo"
+  on interview_schedules for select
+  using (true);

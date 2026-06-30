@@ -2,6 +2,8 @@ import { Eye, MoreVertical, Search } from 'lucide-react'
 import { Link, useSearchParams } from 'react-router-dom'
 import PageHeader from '../components/PageHeader'
 import { applicants as dummyApplicants, pipelineStages } from '../data/dummyApplicants'
+import useSupabaseData from '../hooks/useSupabaseData'
+import { fetchApplicants } from '../services/supabaseData'
 import { getStoredApplications } from '../utils/applicationStorage'
 import { formatScore, getCandidateScores, matchesPipelinePreset, pipelineFilterPresets } from '../utils/candidateInsights'
 
@@ -32,7 +34,8 @@ function StagePill({ stage }) {
 
 function ApplicantsPipelinePage() {
   const [searchParams, setSearchParams] = useSearchParams()
-  const applicants = [...getStoredApplications(), ...dummyApplicants]
+  const { data: backendApplicants, status, error } = useSupabaseData(fetchApplicants, dummyApplicants)
+  const applicants = [...getStoredApplications(), ...backendApplicants]
   const searchQuery = searchParams.get('q') ?? ''
   const stageFilter = searchParams.get('stage') ?? 'All Stages'
   const presetFilter = searchParams.get('filter') ?? 'all'
@@ -103,6 +106,12 @@ function ApplicantsPipelinePage() {
         description="Search, filter, review, and open applicant records from the HR command center."
         variant="dark"
       />
+
+      {status === 'error' ? (
+        <div className="mb-5 rounded-lg border border-amber-400/30 bg-amber-500/10 p-4 text-sm text-amber-200">
+          Supabase applicants could not load, so fallback records are showing. {error?.message}
+        </div>
+      ) : null}
 
       <div className="rounded-xl border border-white/[0.10] bg-[#0B111C] shadow-2xl shadow-black/25">
         <div className="flex flex-col gap-3 border-b border-white/[0.08] p-4 lg:flex-row lg:items-center lg:justify-between">

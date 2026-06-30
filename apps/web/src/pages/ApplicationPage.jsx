@@ -1,6 +1,8 @@
 import { useMemo, useState } from 'react'
 import { useNavigate, useParams } from 'react-router-dom'
 import { jobs } from '../data/dummyJobs'
+import useSupabaseData from '../hooks/useSupabaseData'
+import { fetchJobs } from '../services/supabaseData'
 import { formatAppliedAt, saveSubmittedApplication } from '../utils/applicationStorage'
 
 const blankJob = {
@@ -179,7 +181,8 @@ function UploadBox({ label, fileName, onFile, optional = false }) {
 function ApplicationPage() {
   const { jobId } = useParams()
   const navigate = useNavigate()
-  const job = jobs.find((item) => item.id === jobId) ?? jobs[0]
+  const { data: availableJobs } = useSupabaseData(fetchJobs, jobs)
+  const job = availableJobs.find((item) => item.id === jobId) ?? availableJobs[0]
   const [currentStep, setCurrentStep] = useState(0)
   const [form, setForm] = useState(initialForm)
   const [errors, setErrors] = useState({})

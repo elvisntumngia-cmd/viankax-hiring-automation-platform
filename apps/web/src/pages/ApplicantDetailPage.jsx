@@ -4,6 +4,8 @@ import AutomationTimeline from '../components/AutomationTimeline'
 import CandidateScoreCard from '../components/CandidateScoreCard'
 import PageHeader from '../components/PageHeader'
 import { applicants as dummyApplicants } from '../data/dummyApplicants'
+import useSupabaseData from '../hooks/useSupabaseData'
+import { fetchApplicants } from '../services/supabaseData'
 import { getStoredApplications } from '../utils/applicationStorage'
 import { getCandidateScores } from '../utils/candidateInsights'
 
@@ -44,8 +46,22 @@ const documentRows = [
 
 function ApplicantDetailPage() {
   const { applicantId } = useParams()
-  const applicants = [...getStoredApplications(), ...dummyApplicants]
+  const { data: backendApplicants, status, error } = useSupabaseData(fetchApplicants, dummyApplicants)
+  const applicants = [...getStoredApplications(), ...backendApplicants]
   const applicant = applicants.find((item) => item.id === applicantId)
+
+  if (status === 'loading') {
+    return (
+      <section className="max-w-3xl rounded-lg border border-white/[0.10] bg-[#0B111C] p-6 shadow-xl shadow-black/20">
+        <PageHeader
+          eyebrow="Applicant profile"
+          title="Loading applicant"
+          description="Fetching the latest applicant record from Supabase."
+          variant="dark"
+        />
+      </section>
+    )
+  }
 
   if (!applicant) {
     return (
@@ -53,7 +69,7 @@ function ApplicantDetailPage() {
         <PageHeader
           eyebrow="Applicant profile"
           title="Applicant not found"
-          description="This record may have been removed, filtered out, or not synced from the backend yet."
+          description={error?.message ?? 'This record may have been removed, filtered out, or not synced from the backend yet.'}
           variant="dark"
         />
         <Link

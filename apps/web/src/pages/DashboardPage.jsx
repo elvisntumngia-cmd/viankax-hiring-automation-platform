@@ -2,11 +2,14 @@ import { ArrowRight, Brain, CalendarCheck, CheckCircle2, FileWarning, ShieldAler
 import { Link } from 'react-router-dom'
 import PageHeader from '../components/PageHeader'
 import { applicants as dummyApplicants } from '../data/dummyApplicants'
+import useSupabaseData from '../hooks/useSupabaseData'
+import { fetchApplicants } from '../services/supabaseData'
 import { getStoredApplications } from '../utils/applicationStorage'
 import { getRecentApplicantActivity, matchesPipelinePreset } from '../utils/candidateInsights'
 
 function DashboardPage() {
-  const applicants = [...getStoredApplications(), ...dummyApplicants]
+  const { data: backendApplicants, status, error } = useSupabaseData(fetchApplicants, dummyApplicants)
+  const applicants = [...getStoredApplications(), ...backendApplicants]
   const pendingAiReview = applicants.filter((applicant) => matchesPipelinePreset(applicant, 'pending-ai-review')).length
   const pendingComplianceReview = applicants.filter((applicant) => matchesPipelinePreset(applicant, 'pending-compliance-review')).length
   const pendingInterviews = applicants.filter((applicant) => matchesPipelinePreset(applicant, 'pending-interviews')).length
@@ -54,6 +57,12 @@ function DashboardPage() {
         ))}
       </div>
 
+      {status === 'error' ? (
+        <div className="mt-5 rounded-lg border border-amber-400/30 bg-amber-500/10 p-4 text-sm text-amber-200">
+          Supabase applicants could not load, so fallback records are showing. {error?.message}
+        </div>
+      ) : null}
+
       <div className="mt-6 grid gap-6 xl:grid-cols-[minmax(0,1fr)_minmax(280px,360px)] sm:mt-8">
         <section className="min-w-0 rounded-lg border border-white/[0.10] bg-[#0B111C] p-4 shadow-2xl shadow-black/25 sm:p-5">
           <h2 className="text-lg font-semibold text-white sm:text-xl">Recent Activity</h2>
@@ -98,6 +107,7 @@ function DashboardPage() {
             <h2 className="text-lg font-semibold text-white">Automation engine queue</h2>
             <p className="mt-2 text-sm text-zinc-400">
               {applicants.length} applicants are loaded into the HR pipeline, including local demo submissions.
+              {status === 'success' ? ' Supabase is connected.' : ''}
             </p>
           </div>
           <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
