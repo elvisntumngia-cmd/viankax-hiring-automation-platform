@@ -1,4 +1,5 @@
 import { Link, useParams } from 'react-router-dom'
+import AutomationEventsPanel from '../components/AutomationEventsPanel'
 import AiRecommendationPanel from '../components/AiRecommendationPanel'
 import AutomationTimeline from '../components/AutomationTimeline'
 import CandidateScoreCard from '../components/CandidateScoreCard'
@@ -138,6 +139,10 @@ function ApplicantDetailPage() {
 
       <div className="mb-6">
         <AutomationTimeline applicant={applicant} />
+      </div>
+
+      <div className="mb-6">
+        <AutomationEventsPanel events={applicant.automationEvents} />
       </div>
 
       <div className="grid gap-5 xl:grid-cols-2">
