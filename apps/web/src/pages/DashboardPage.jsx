@@ -1,14 +1,16 @@
 import { ArrowRight, Brain, CalendarCheck, CheckCircle2, FileWarning, ShieldAlert, ShieldCheck, Star, UserPlus } from 'lucide-react'
 import { Link } from 'react-router-dom'
+import AutomationQueuePanel from '../components/AutomationQueuePanel'
 import PageHeader from '../components/PageHeader'
 import { applicants as dummyApplicants } from '../data/dummyApplicants'
 import useSupabaseData from '../hooks/useSupabaseData'
-import { fetchApplicants } from '../services/supabaseData'
+import { fetchApplicants, fetchAutomationQueueSummary } from '../services/supabaseData'
 import { getStoredApplications } from '../utils/applicationStorage'
 import { getRecentApplicantActivity, matchesPipelinePreset } from '../utils/candidateInsights'
 
 function DashboardPage() {
   const { data: backendApplicants, status, error } = useSupabaseData(fetchApplicants, dummyApplicants)
+  const { data: automationQueue, status: queueStatus, error: queueError } = useSupabaseData(fetchAutomationQueueSummary, [])
   const applicants = [...backendApplicants, ...getStoredApplications()]
   const pendingAiReview = applicants.filter((applicant) => matchesPipelinePreset(applicant, 'pending-ai-review')).length
   const pendingComplianceReview = applicants.filter((applicant) => matchesPipelinePreset(applicant, 'pending-compliance-review')).length
@@ -125,6 +127,19 @@ function DashboardPage() {
             ))}
           </div>
         </div>
+      </div>
+
+      <div className="mt-6 sm:mt-8">
+        {queueStatus === 'error' ? (
+          <div className="mb-5 rounded-lg border border-amber-400/30 bg-amber-500/10 p-4 text-sm text-amber-200">
+            Automation queue could not load from Supabase. {queueError?.message}
+          </div>
+        ) : null}
+        <AutomationQueuePanel
+          jobs={automationQueue}
+          title="Automation job queue"
+          description="Phase 3A backend foundation: queued workflow tasks for confirmations, resume parsing, AI screening, compliance review, voice interviews, and scheduling."
+        />
       </div>
     </section>
   )

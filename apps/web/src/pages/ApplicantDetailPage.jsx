@@ -1,6 +1,7 @@
 import { useState } from 'react'
 import { Link, useParams } from 'react-router-dom'
 import AutomationEventsPanel from '../components/AutomationEventsPanel'
+import AutomationQueuePanel from '../components/AutomationQueuePanel'
 import AiRecommendationPanel from '../components/AiRecommendationPanel'
 import AutomationTimeline from '../components/AutomationTimeline'
 import CandidateScoreCard from '../components/CandidateScoreCard'
@@ -175,6 +176,49 @@ function ApplicantDetailPage() {
 
       <div className="mb-6">
         <AutomationEventsPanel events={applicant.automationEvents} />
+      </div>
+
+      <div className="mb-6 grid gap-5 xl:grid-cols-[minmax(0,1fr)_minmax(320px,420px)]">
+        <AutomationQueuePanel
+          jobs={applicant.automationJobs}
+          title="Applicant automation queue"
+          description="Backend tasks queued for this candidate before real integrations are connected."
+        />
+        <InfoCard title="Workflow run">
+          {applicant.workflowRuns?.length ? (
+            <div className="space-y-3">
+              {applicant.workflowRuns.map((run) => (
+                <div key={run.id} className="rounded-md border border-white/[0.08] bg-white/[0.04] p-3">
+                  <DetailRow label="Workflow" value={run.name} />
+                  <DetailRow label="Status" value={run.status} />
+                  <DetailRow label="Current step" value={run.currentStep ?? 'Pending'} />
+                  <DetailRow label="Next action" value={run.metadata?.nextAction ?? run.metadata?.blocker ?? 'Awaiting worker'} />
+                </div>
+              ))}
+            </div>
+          ) : (
+            <p>No workflow run has been created yet.</p>
+          )}
+        </InfoCard>
+      </div>
+
+      <div className="mb-6">
+        <InfoCard title="Notification queue">
+          {applicant.notifications?.length ? (
+            <div className="space-y-3">
+              {applicant.notifications.map((notification) => (
+                <div key={notification.id} className="rounded-md border border-white/[0.08] bg-white/[0.04] p-3">
+                  <DetailRow label="Channel" value={notification.channel} />
+                  <DetailRow label="Recipient" value={notification.recipient} />
+                  <DetailRow label="Status" value={notification.status} />
+                  <p className="mt-3 rounded-md bg-white/[0.04] p-3">{notification.message}</p>
+                </div>
+              ))}
+            </div>
+          ) : (
+            <p>No notifications are queued for this applicant yet.</p>
+          )}
+        </InfoCard>
       </div>
 
       <div className="mb-6">

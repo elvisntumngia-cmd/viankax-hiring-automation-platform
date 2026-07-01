@@ -138,6 +138,51 @@ function stageHistoryFromRows(rows = []) {
   }))
 }
 
+function workflowRunsFromRows(rows = []) {
+  return rows.map((run) => ({
+    id: run.id,
+    name: run.workflow_name,
+    status: run.run_status,
+    currentStep: run.current_step,
+    startedAt: run.started_at,
+    completedAt: run.completed_at,
+    createdAt: run.created_at,
+    updatedAt: run.updated_at,
+    metadata: run.metadata ?? {},
+  }))
+}
+
+function automationJobsFromRows(rows = []) {
+  return rows.map((job) => ({
+    id: job.id,
+    type: job.job_type,
+    label: job.job_label,
+    status: job.job_status,
+    priority: job.priority,
+    scheduledFor: job.scheduled_for,
+    attempts: job.attempts,
+    lastError: job.last_error,
+    payload: job.payload ?? {},
+    createdAt: job.created_at,
+    updatedAt: job.updated_at,
+  }))
+}
+
+function notificationsFromRows(rows = []) {
+  return rows.map((notification) => ({
+    id: notification.id,
+    channel: notification.channel,
+    recipient: notification.recipient,
+    subject: notification.subject,
+    message: notification.message,
+    status: notification.notification_status,
+    scheduledFor: notification.scheduled_for,
+    sentAt: notification.sent_at,
+    lastError: notification.last_error,
+    metadata: notification.metadata ?? {},
+  }))
+}
+
 function mapApplicant(row) {
   const scores = row.candidate_scores?.[0] ?? {}
   const recommendation = row.ai_recommendations?.[0] ?? {}
@@ -150,6 +195,9 @@ function mapApplicant(row) {
 
   const automationEvents = automationEventsFromRows(row.automation_events)
   const stageHistory = stageHistoryFromRows(row.pipeline_stage_history)
+  const workflowRuns = workflowRunsFromRows(row.workflow_runs)
+  const automationJobs = automationJobsFromRows(row.automation_jobs)
+  const notifications = notificationsFromRows(row.notification_queue)
   const latestEvent = [...automationEvents].sort((first, second) => {
     if (!first.createdAt || !second.createdAt) return 0
     return new Date(second.createdAt) - new Date(first.createdAt)
@@ -188,6 +236,9 @@ function mapApplicant(row) {
     documentFiles: documentFilesFromRows(row.applicant_documents),
     automationEvents,
     stageHistory,
+    workflowRuns,
+    automationJobs,
+    notifications,
     latestEvent,
     lastUpdatedAt: row.updated_at ?? row.submitted_at,
     knockout: row.knockout_result,
@@ -300,6 +351,9 @@ export async function fetchApplicants() {
       jobs(title, location, clients(name)),
       applicant_documents(document_type, file_name, storage_bucket, storage_path, status),
       automation_events(event_type, event_status, event_label, metadata, created_at),
+      workflow_runs(id, workflow_name, run_status, current_step, started_at, completed_at, metadata, created_at, updated_at),
+      automation_jobs(id, job_type, job_label, job_status, priority, scheduled_for, attempts, last_error, payload, created_at, updated_at),
+      notification_queue(id, channel, recipient, subject, message, notification_status, scheduled_for, sent_at, last_error, metadata),
       pipeline_stage_history(from_stage, to_stage, changed_by, reason, created_at),
       screening_answers(question, answer),
       candidate_scores(
@@ -330,6 +384,9 @@ export async function lookupApplicationStatus({ email, phone }) {
       jobs(title, location, clients(name)),
       applicant_documents(document_type, file_name, storage_bucket, storage_path, status),
       automation_events(event_type, event_status, event_label, metadata, created_at),
+      workflow_runs(id, workflow_name, run_status, current_step, started_at, completed_at, metadata, created_at, updated_at),
+      automation_jobs(id, job_type, job_label, job_status, priority, scheduled_for, attempts, last_error, payload, created_at, updated_at),
+      notification_queue(id, channel, recipient, subject, message, notification_status, scheduled_for, sent_at, last_error, metadata),
       pipeline_stage_history(from_stage, to_stage, changed_by, reason, created_at),
       screening_answers(question, answer),
       candidate_scores(
@@ -354,6 +411,46 @@ export async function lookupApplicationStatus({ email, phone }) {
   return data?.[0] ? mapApplicant(data[0]) : null
 }
 
+export async function fetchAutomationQueueSummary() {
+  if (!isSupabaseConfigured) return []
+
+  const { data, error } = await supabase
+    .from('automation_jobs')
+    .select(`
+      id,
+      job_type,
+      job_label,
+      job_status,
+      priority,
+      scheduled_for,
+      attempts,
+      last_error,
+      created_at,
+      updated_at,
+      applicants(full_name, current_stage, jobs(title))
+    `)
+    .order('scheduled_for', { ascending: true })
+    .limit(20)
+
+  if (error) throw error
+
+  return data.map((job) => ({
+    id: job.id,
+    type: job.job_type,
+    label: job.job_label,
+    status: job.job_status,
+    priority: job.priority,
+    scheduledFor: job.scheduled_for,
+    attempts: job.attempts,
+    lastError: job.last_error,
+    applicantName: job.applicants?.full_name ?? 'Unknown applicant',
+    applicantStage: job.applicants?.current_stage ?? 'Stage pending',
+    role: job.applicants?.jobs?.title ?? 'Role pending',
+    createdAt: job.created_at,
+    updatedAt: job.updated_at,
+  }))
+}
+
 export async function createDocumentSignedUrl(document) {
   if (!isSupabaseConfigured) {
     throw new Error('Supabase is not configured.')
@@ -365,6 +462,122 @@ export async function createDocumentSignedUrl(document) {
 
   if (error) throw error
   return data.signedUrl
+}
+
+async function createWorkflowRun(applicantId, application) {
+  const { data, error } = await supabase
+    .from('workflow_runs')
+    .insert({
+      applicant_id: applicantId,
+      workflow_name: 'candidate-intake-v1',
+      run_status: application.knockoutResult === 'Failed' ? 'completed' : 'queued',
+      current_step: application.knockoutResult === 'Failed' ? 'knockout_failed' : 'confirmation',
+      started_at: new Date().toISOString(),
+      completed_at: application.knockoutResult === 'Failed' ? new Date().toISOString() : null,
+      metadata: {
+        source: 'Applicant Portal',
+        jobTitle: application.jobTitle,
+        nextAction: application.knockoutResult === 'Failed'
+          ? 'Stop downstream workflow'
+          : 'Queue confirmation and screening tasks',
+      },
+    })
+    .select('id')
+    .single()
+
+  if (error) throw error
+  return data.id
+}
+
+function automationJobRows(applicantId, workflowRunId, application, uploadedDocuments) {
+  if (application.knockoutResult === 'Failed') {
+    return [
+      {
+        applicant_id: applicantId,
+        workflow_run_id: workflowRunId,
+        job_type: 'stop_workflow_knockout_failed',
+        job_label: 'Stop workflow after failed knockout',
+        job_status: 'completed',
+        priority: 1,
+        payload: {
+          reason: 'knockout_failed',
+          flags: application.knockoutFlags ?? [],
+        },
+      },
+    ]
+  }
+
+  return [
+    {
+      applicant_id: applicantId,
+      workflow_run_id: workflowRunId,
+      job_type: 'send_confirmation_sms',
+      job_label: 'Send SMS confirmation',
+      job_status: 'queued',
+      priority: 2,
+      payload: { channel: 'sms', provider: 'twilio_placeholder' },
+    },
+    {
+      applicant_id: applicantId,
+      workflow_run_id: workflowRunId,
+      job_type: 'send_confirmation_email',
+      job_label: 'Send email confirmation',
+      job_status: 'queued',
+      priority: 2,
+      payload: { channel: 'email', provider: 'resend_placeholder' },
+    },
+    {
+      applicant_id: applicantId,
+      workflow_run_id: workflowRunId,
+      job_type: 'parse_resume',
+      job_label: 'Parse resume and score experience',
+      job_status: uploadedDocuments.resume ? 'queued' : 'blocked',
+      priority: 3,
+      payload: { engine: 'openai_placeholder', resumeUploaded: Boolean(uploadedDocuments.resume) },
+    },
+    {
+      applicant_id: applicantId,
+      workflow_run_id: workflowRunId,
+      job_type: 'send_ai_assessment',
+      job_label: 'Send AI screening assessment link',
+      job_status: 'queued',
+      priority: 4,
+      payload: { channel: 'sms_email' },
+    },
+    {
+      applicant_id: applicantId,
+      workflow_run_id: workflowRunId,
+      job_type: 'verify_license',
+      job_label: 'Verify license / guard card',
+      job_status: uploadedDocuments.guardCard ? 'queued' : 'blocked',
+      priority: 3,
+      payload: { licenseUploaded: Boolean(uploadedDocuments.guardCard) },
+    },
+  ]
+}
+
+function notificationRows(applicantId, application) {
+  if (application.knockoutResult === 'Failed') return []
+
+  return [
+    {
+      applicant_id: applicantId,
+      channel: 'sms',
+      recipient: application.phone,
+      message: 'Thank you for applying. Your ViankaX application has been received.',
+      notification_status: 'queued',
+      metadata: { template: 'application_confirmation' },
+    },
+    {
+      applicant_id: applicantId,
+      channel: 'email',
+      recipient: application.email,
+      subject: 'Your application was received',
+      message: 'Your application has been received. The hiring automation workflow will update your status as screening progresses.',
+      notification_status: 'queued',
+      metadata: { template: 'application_confirmation' },
+    },
+  ]
 }
 
 export async function submitApplicationToSupabase(application, uploadFiles = {}) {
@@ -398,6 +611,7 @@ export async function submitApplicationToSupabase(application, uploadFiles = {})
 
   const applicantId = applicant.id
   const uploadedDocuments = await uploadApplicationDocuments(applicantId, uploadFiles)
+  const workflowRunId = await createWorkflowRun(applicantId, application)
   const scoreRow = {
     applicant_id: applicantId,
     resume_score: application.scores.resumeScore,
@@ -464,13 +678,19 @@ export async function submitApplicationToSupabase(application, uploadFiles = {})
     category: 'application',
   }))
 
+  const queuedNotifications = notificationRows(applicantId, application)
   const writeOperations = [
     supabase.from('candidate_scores').insert(scoreRow),
     supabase.from('ai_recommendations').insert(recommendationRow),
     supabase.from('automation_events').insert(automationEventRows),
+    supabase.from('automation_jobs').insert(automationJobRows(applicantId, workflowRunId, application, uploadedDocuments)),
     supabase.from('screening_answers').insert(screeningRows),
     supabase.from('applicant_documents').insert(documentRowsFromApplication(applicantId, application, uploadedDocuments)),
   ]
+
+  if (queuedNotifications.length) {
+    writeOperations.push(supabase.from('notification_queue').insert(queuedNotifications))
+  }
 
   const results = await Promise.all(writeOperations)
   const writeError = results.find((result) => result.error)?.error

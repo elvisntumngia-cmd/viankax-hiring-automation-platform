@@ -430,6 +430,130 @@ values
     '{"description":"Required criteria failed, so downstream automation was not triggered."}'::jsonb
   );
 
+delete from notification_queue
+where applicant_id in (
+  '10000000-0000-0000-0000-000000000001',
+  '10000000-0000-0000-0000-000000000002',
+  '10000000-0000-0000-0000-000000000003',
+  '10000000-0000-0000-0000-000000000004',
+  '10000000-0000-0000-0000-000000000005'
+);
+
+delete from automation_jobs
+where applicant_id in (
+  '10000000-0000-0000-0000-000000000001',
+  '10000000-0000-0000-0000-000000000002',
+  '10000000-0000-0000-0000-000000000003',
+  '10000000-0000-0000-0000-000000000004',
+  '10000000-0000-0000-0000-000000000005'
+);
+
+delete from workflow_runs
+where applicant_id in (
+  '10000000-0000-0000-0000-000000000001',
+  '10000000-0000-0000-0000-000000000002',
+  '10000000-0000-0000-0000-000000000003',
+  '10000000-0000-0000-0000-000000000004',
+  '10000000-0000-0000-0000-000000000005'
+);
+
+insert into workflow_runs (id, applicant_id, workflow_name, run_status, current_step, started_at, completed_at, metadata)
+values
+  (
+    '20000000-0000-0000-0000-000000000001',
+    '10000000-0000-0000-0000-000000000001',
+    'candidate-intake-v1',
+    'running',
+    'resume_screening',
+    now() - interval '42 minutes',
+    null,
+    '{"source":"Demo seed","nextAction":"Run resume screening and AI assessment"}'::jsonb
+  ),
+  (
+    '20000000-0000-0000-0000-000000000002',
+    '10000000-0000-0000-0000-000000000002',
+    'candidate-intake-v1',
+    'running',
+    'license_verification',
+    now() - interval '2 hours',
+    null,
+    '{"source":"Demo seed","nextAction":"Finalize compliance review"}'::jsonb
+  ),
+  (
+    '20000000-0000-0000-0000-000000000003',
+    '10000000-0000-0000-0000-000000000003',
+    'candidate-intake-v1',
+    'blocked',
+    'license_upload_request',
+    now() - interval '3 hours',
+    null,
+    '{"source":"Demo seed","blocker":"Missing license upload"}'::jsonb
+  ),
+  (
+    '20000000-0000-0000-0000-000000000004',
+    '10000000-0000-0000-0000-000000000004',
+    'candidate-intake-v1',
+    'running',
+    'interview_scheduling',
+    now() - interval '5 hours',
+    null,
+    '{"source":"Demo seed","nextAction":"Monitor interview outcome"}'::jsonb
+  ),
+  (
+    '20000000-0000-0000-0000-000000000005',
+    '10000000-0000-0000-0000-000000000005',
+    'candidate-intake-v1',
+    'completed',
+    'rejected',
+    now() - interval '1 day',
+    now() - interval '23 hours',
+    '{"source":"Demo seed","outcome":"Knockout failed"}'::jsonb
+  );
+
+insert into automation_jobs (applicant_id, workflow_run_id, job_type, job_label, job_status, priority, scheduled_for, attempts, payload)
+values
+  ('10000000-0000-0000-0000-000000000001', '20000000-0000-0000-0000-000000000001', 'send_confirmation_sms', 'Send SMS confirmation', 'completed', 3, now() - interval '40 minutes', 1, '{"provider":"twilio_placeholder"}'::jsonb),
+  ('10000000-0000-0000-0000-000000000001', '20000000-0000-0000-0000-000000000001', 'parse_resume', 'Parse resume and score experience', 'queued', 2, now(), 0, '{"engine":"openai_placeholder"}'::jsonb),
+  ('10000000-0000-0000-0000-000000000001', '20000000-0000-0000-0000-000000000001', 'send_ai_assessment', 'Send AI screening assessment link', 'queued', 3, now() + interval '5 minutes', 0, '{"channel":"sms_email"}'::jsonb),
+  ('10000000-0000-0000-0000-000000000002', '20000000-0000-0000-0000-000000000002', 'evaluate_ai_assessment', 'Evaluate AI screening assessment', 'completed', 2, now() - interval '1 hour', 1, '{"score":88}'::jsonb),
+  ('10000000-0000-0000-0000-000000000002', '20000000-0000-0000-0000-000000000002', 'verify_license', 'Verify license / guard card', 'running', 1, now() - interval '8 minutes', 1, '{"reviewType":"compliance"}'::jsonb),
+  ('10000000-0000-0000-0000-000000000003', '20000000-0000-0000-0000-000000000003', 'request_license_upload', 'Request missing license upload', 'blocked', 1, now() - interval '2 hours', 2, '{"missingDocument":"license"}'::jsonb),
+  ('10000000-0000-0000-0000-000000000004', '20000000-0000-0000-0000-000000000004', 'voice_interview_analysis', 'Analyze voice interview', 'completed', 2, now() - interval '2 hours', 1, '{"voiceScore":91}'::jsonb),
+  ('10000000-0000-0000-0000-000000000004', '20000000-0000-0000-0000-000000000004', 'send_scheduling_link', 'Send interview scheduling link', 'completed', 2, now() - interval '90 minutes', 1, '{"provider":"calcom_placeholder"}'::jsonb),
+  ('10000000-0000-0000-0000-000000000005', '20000000-0000-0000-0000-000000000005', 'stop_workflow_knockout_failed', 'Stop workflow after failed knockout', 'completed', 1, now() - interval '23 hours', 1, '{"reason":"knockout_failed"}'::jsonb);
+
+insert into notification_queue (applicant_id, automation_job_id, channel, recipient, subject, message, notification_status, scheduled_for, sent_at, metadata)
+select
+  job.applicant_id,
+  job.id,
+  'sms',
+  applicant.phone,
+  null,
+  'Thank you for applying. Your application has been received by ViankaX Hiring Automation.',
+  case when job.job_status = 'completed' then 'sent' else 'queued' end,
+  job.scheduled_for,
+  case when job.job_status = 'completed' then job.updated_at else null end,
+  '{"template":"application_confirmation"}'::jsonb
+from automation_jobs job
+join applicants applicant on applicant.id = job.applicant_id
+where job.job_type = 'send_confirmation_sms';
+
+insert into notification_queue (applicant_id, automation_job_id, channel, recipient, subject, message, notification_status, scheduled_for, sent_at, metadata)
+select
+  job.applicant_id,
+  job.id,
+  'email',
+  applicant.email,
+  'Complete your ViankaX screening assessment',
+  'Please complete your AI screening assessment so the hiring team can continue reviewing your application.',
+  'queued',
+  job.scheduled_for,
+  null,
+  '{"template":"ai_assessment_invite"}'::jsonb
+from automation_jobs job
+join applicants applicant on applicant.id = job.applicant_id
+where job.job_type = 'send_ai_assessment';
+
 delete from pipeline_stage_history
 where applicant_id in (
   '10000000-0000-0000-0000-000000000001',

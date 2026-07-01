@@ -99,6 +99,53 @@ create table if not exists automation_events (
   created_at timestamptz not null default now()
 );
 
+create table if not exists workflow_runs (
+  id uuid primary key default gen_random_uuid(),
+  applicant_id uuid references applicants(id) on delete cascade,
+  workflow_name text not null,
+  run_status text not null default 'queued',
+  current_step text,
+  started_at timestamptz,
+  completed_at timestamptz,
+  metadata jsonb not null default '{}',
+  created_at timestamptz not null default now(),
+  updated_at timestamptz not null default now()
+);
+
+create table if not exists automation_jobs (
+  id uuid primary key default gen_random_uuid(),
+  applicant_id uuid references applicants(id) on delete cascade,
+  workflow_run_id uuid references workflow_runs(id) on delete cascade,
+  job_type text not null,
+  job_label text not null,
+  job_status text not null default 'queued',
+  priority integer not null default 5,
+  scheduled_for timestamptz not null default now(),
+  attempts integer not null default 0,
+  last_error text,
+  payload jsonb not null default '{}',
+  created_at timestamptz not null default now(),
+  updated_at timestamptz not null default now()
+);
+
+create table if not exists notification_queue (
+  id uuid primary key default gen_random_uuid(),
+  applicant_id uuid references applicants(id) on delete cascade,
+  automation_job_id uuid references automation_jobs(id) on delete set null,
+  channel text not null,
+  recipient text not null,
+  subject text,
+  message text not null,
+  notification_status text not null default 'queued',
+  scheduled_for timestamptz not null default now(),
+  sent_at timestamptz,
+  provider_message_id text,
+  last_error text,
+  metadata jsonb not null default '{}',
+  created_at timestamptz not null default now(),
+  updated_at timestamptz not null default now()
+);
+
 create table if not exists pipeline_stage_history (
   id uuid primary key default gen_random_uuid(),
   applicant_id uuid not null references applicants(id) on delete cascade,
@@ -141,6 +188,12 @@ create index if not exists idx_candidate_scores_applicant_id on candidate_scores
 create unique index if not exists idx_candidate_scores_unique_applicant on candidate_scores(applicant_id);
 create unique index if not exists idx_ai_recommendations_unique_applicant on ai_recommendations(applicant_id);
 create index if not exists idx_automation_events_applicant_id on automation_events(applicant_id);
+create index if not exists idx_workflow_runs_applicant_id on workflow_runs(applicant_id);
+create index if not exists idx_workflow_runs_status on workflow_runs(run_status);
+create index if not exists idx_automation_jobs_applicant_id on automation_jobs(applicant_id);
+create index if not exists idx_automation_jobs_status on automation_jobs(job_status);
+create index if not exists idx_notification_queue_applicant_id on notification_queue(applicant_id);
+create index if not exists idx_notification_queue_status on notification_queue(notification_status);
 create index if not exists idx_pipeline_stage_history_applicant_id on pipeline_stage_history(applicant_id);
 
 alter table clients enable row level security;
@@ -151,6 +204,9 @@ alter table screening_answers enable row level security;
 alter table candidate_scores enable row level security;
 alter table ai_recommendations enable row level security;
 alter table automation_events enable row level security;
+alter table workflow_runs enable row level security;
+alter table automation_jobs enable row level security;
+alter table notification_queue enable row level security;
 alter table pipeline_stage_history enable row level security;
 alter table voice_interviews enable row level security;
 alter table interview_schedules enable row level security;
@@ -241,6 +297,54 @@ create policy "Public can read automation events for demo"
 drop policy if exists "Public can create automation events" on automation_events;
 create policy "Public can create automation events"
   on automation_events for insert
+  with check (true);
+
+drop policy if exists "Public can read workflow runs for demo" on workflow_runs;
+create policy "Public can read workflow runs for demo"
+  on workflow_runs for select
+  using (true);
+
+drop policy if exists "Public can create workflow runs for demo" on workflow_runs;
+create policy "Public can create workflow runs for demo"
+  on workflow_runs for insert
+  with check (true);
+
+drop policy if exists "Public can update workflow runs for demo" on workflow_runs;
+create policy "Public can update workflow runs for demo"
+  on workflow_runs for update
+  using (true)
+  with check (true);
+
+drop policy if exists "Public can read automation jobs for demo" on automation_jobs;
+create policy "Public can read automation jobs for demo"
+  on automation_jobs for select
+  using (true);
+
+drop policy if exists "Public can create automation jobs for demo" on automation_jobs;
+create policy "Public can create automation jobs for demo"
+  on automation_jobs for insert
+  with check (true);
+
+drop policy if exists "Public can update automation jobs for demo" on automation_jobs;
+create policy "Public can update automation jobs for demo"
+  on automation_jobs for update
+  using (true)
+  with check (true);
+
+drop policy if exists "Public can read notification queue for demo" on notification_queue;
+create policy "Public can read notification queue for demo"
+  on notification_queue for select
+  using (true);
+
+drop policy if exists "Public can create notification queue for demo" on notification_queue;
+create policy "Public can create notification queue for demo"
+  on notification_queue for insert
+  with check (true);
+
+drop policy if exists "Public can update notification queue for demo" on notification_queue;
+create policy "Public can update notification queue for demo"
+  on notification_queue for update
+  using (true)
   with check (true);
 
 drop policy if exists "Public can read pipeline history for demo" on pipeline_stage_history;
