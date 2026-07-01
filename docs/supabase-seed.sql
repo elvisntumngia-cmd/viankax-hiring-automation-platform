@@ -429,3 +429,78 @@ values
     'Knockout Screening Failed',
     '{"description":"Required criteria failed, so downstream automation was not triggered."}'::jsonb
   );
+
+delete from pipeline_stage_history
+where applicant_id in (
+  '10000000-0000-0000-0000-000000000001',
+  '10000000-0000-0000-0000-000000000002',
+  '10000000-0000-0000-0000-000000000003',
+  '10000000-0000-0000-0000-000000000004',
+  '10000000-0000-0000-0000-000000000005'
+);
+
+insert into pipeline_stage_history (applicant_id, from_stage, to_stage, changed_by, reason)
+values
+  (
+    '10000000-0000-0000-0000-000000000001',
+    null,
+    'New Applicant',
+    'automation',
+    'Application submitted and candidate entered the pipeline.'
+  ),
+  (
+    '10000000-0000-0000-0000-000000000002',
+    null,
+    'New Applicant',
+    'automation',
+    'Application submitted and candidate entered the pipeline.'
+  ),
+  (
+    '10000000-0000-0000-0000-000000000002',
+    'New Applicant',
+    'Assessment Completed',
+    'automation',
+    'AI screening assessment completed with strong role-fit signals.'
+  ),
+  (
+    '10000000-0000-0000-0000-000000000003',
+    null,
+    'New Applicant',
+    'automation',
+    'Application submitted and candidate entered the pipeline.'
+  ),
+  (
+    '10000000-0000-0000-0000-000000000003',
+    'Assessment Completed',
+    'License Pending',
+    'automation',
+    'License upload is missing and compliance review is blocked.'
+  ),
+  (
+    '10000000-0000-0000-0000-000000000004',
+    null,
+    'New Applicant',
+    'automation',
+    'Application submitted and candidate entered the pipeline.'
+  ),
+  (
+    '10000000-0000-0000-0000-000000000004',
+    'Voice Interview Complete',
+    'Interview Scheduled',
+    'automation',
+    'Voice interview completed and manager interview was scheduled.'
+  ),
+  (
+    '10000000-0000-0000-0000-000000000005',
+    null,
+    'New Applicant',
+    'automation',
+    'Application submitted and candidate entered the pipeline.'
+  ),
+  (
+    '10000000-0000-0000-0000-000000000005',
+    'New Applicant',
+    'Rejected',
+    'automation',
+    'Candidate failed knockout screening criteria.'
+  );

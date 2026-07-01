@@ -32,6 +32,17 @@ function StagePill({ stage }) {
   )
 }
 
+function formatLastUpdated(dateValue) {
+  if (!dateValue) return 'Not updated'
+
+  return new Intl.DateTimeFormat('en-US', {
+    month: 'short',
+    day: 'numeric',
+    hour: 'numeric',
+    minute: '2-digit',
+  }).format(new Date(dateValue))
+}
+
 function ApplicantsPipelinePage() {
   const [searchParams, setSearchParams] = useSearchParams()
   const { data: backendApplicants, status, error } = useSupabaseData(fetchApplicants, dummyApplicants)
@@ -189,6 +200,11 @@ function ApplicantsPipelinePage() {
                     <p className="mt-1">{applicant.licenseStatus}</p>
                   </div>
                 </div>
+                <div>
+                  <p className="text-xs font-semibold uppercase tracking-wide text-zinc-500">Latest activity</p>
+                  <p className="mt-1">{applicant.latestEvent?.label ?? 'No event recorded'}</p>
+                  <p className="mt-1 text-xs text-zinc-500">{formatLastUpdated(applicant.lastUpdatedAt)}</p>
+                </div>
               </div>
               <Link
                 to={`/dashboard/applicants/${applicant.id}`}
@@ -204,7 +220,7 @@ function ApplicantsPipelinePage() {
           <table className="w-full min-w-[900px] border-collapse text-left text-sm">
             <thead className="text-zinc-400">
               <tr className="border-b border-white/[0.08]">
-                {['Applicant', 'Position', 'Stage', 'Overall Score', 'AI Screening', 'Compliance', 'Actions'].map((head) => (
+                {['Applicant', 'Position', 'Stage', 'Overall Score', 'AI Screening', 'Latest Activity', 'Updated', 'Actions'].map((head) => (
                   <th key={head} className="px-4 py-4 font-semibold lg:px-5">
                     {head}
                   </th>
@@ -223,7 +239,11 @@ function ApplicantsPipelinePage() {
                     {formatScore(getCandidateScores(applicant).overallCandidateScore)}
                   </td>
                   <td className="px-4 py-4 lg:px-5">{formatScore(getCandidateScores(applicant).screeningScore)}</td>
-                  <td className="px-4 py-4 lg:px-5">{applicant.licenseStatus}</td>
+                  <td className="px-4 py-4 lg:px-5">
+                    <p className="font-semibold text-zinc-200">{applicant.latestEvent?.label ?? 'No event recorded'}</p>
+                    <p className="mt-1 text-xs text-zinc-500">{applicant.licenseStatus}</p>
+                  </td>
+                  <td className="px-4 py-4 lg:px-5">{formatLastUpdated(applicant.lastUpdatedAt)}</td>
                   <td className="px-4 py-4 lg:px-5">
                     <div className="flex items-center gap-3 text-zinc-400">
                       <Link to={`/dashboard/applicants/${applicant.id}`} aria-label={`View ${applicant.name}`}>

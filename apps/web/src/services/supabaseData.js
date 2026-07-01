@@ -128,6 +128,16 @@ function automationEventsFromRows(rows = []) {
   }))
 }
 
+function stageHistoryFromRows(rows = []) {
+  return rows.map((history) => ({
+    fromStage: history.from_stage,
+    toStage: history.to_stage,
+    changedBy: history.changed_by,
+    reason: history.reason,
+    createdAt: history.created_at,
+  }))
+}
+
 function mapApplicant(row) {
   const scores = row.candidate_scores?.[0] ?? {}
   const recommendation = row.ai_recommendations?.[0] ?? {}
@@ -137,6 +147,13 @@ function mapApplicant(row) {
   const screeningAnswers = row.screening_answers?.length
     ? row.screening_answers.map((answer) => [answer.question, answer.answer ?? 'Not answered'])
     : [['Screening', 'No screening answers recorded yet.']]
+
+  const automationEvents = automationEventsFromRows(row.automation_events)
+  const stageHistory = stageHistoryFromRows(row.pipeline_stage_history)
+  const latestEvent = [...automationEvents].sort((first, second) => {
+    if (!first.createdAt || !second.createdAt) return 0
+    return new Date(second.createdAt) - new Date(first.createdAt)
+  })[0]
 
   return {
     id: row.id,
@@ -169,7 +186,10 @@ function mapApplicant(row) {
       : 'Recently submitted',
     documents: documentsFromRows(row.applicant_documents),
     documentFiles: documentFilesFromRows(row.applicant_documents),
-    automationEvents: automationEventsFromRows(row.automation_events),
+    automationEvents,
+    stageHistory,
+    latestEvent,
+    lastUpdatedAt: row.updated_at ?? row.submitted_at,
     knockout: row.knockout_result,
     knockoutResult: row.knockout_result,
     aiSummary: recommendation.summary ?? 'AI recommendation has not been generated yet.',
@@ -222,6 +242,7 @@ export async function fetchApplicants() {
       jobs(title, location, clients(name)),
       applicant_documents(document_type, file_name, storage_bucket, storage_path, status),
       automation_events(event_type, event_status, event_label, metadata, created_at),
+      pipeline_stage_history(from_stage, to_stage, changed_by, reason, created_at),
       screening_answers(question, answer),
       candidate_scores(
         resume_score,
@@ -460,6 +481,13 @@ export async function updateApplicantDecision(applicant, decision) {
     stage: update.nextStage,
     status: update.status,
     decision: update.finalDecision,
+    latestEvent: {
+      type: eventRow.event_type,
+      status: eventRow.event_status,
+      label: eventRow.event_label,
+      description: eventRow.metadata.description,
+      createdAt: new Date().toISOString(),
+    },
     automationEvents: [
       {
         type: eventRow.event_type,
@@ -470,5 +498,16 @@ export async function updateApplicantDecision(applicant, decision) {
       },
       ...(applicant.automationEvents ?? []),
     ],
+    stageHistory: [
+      {
+        fromStage: historyRow.from_stage,
+        toStage: historyRow.to_stage,
+        changedBy: historyRow.changed_by,
+        reason: historyRow.reason,
+        createdAt: new Date().toISOString(),
+      },
+      ...(applicant.stageHistory ?? []),
+    ],
+    lastUpdatedAt: new Date().toISOString(),
   }
 }

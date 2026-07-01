@@ -5,6 +5,7 @@ import AiRecommendationPanel from '../components/AiRecommendationPanel'
 import AutomationTimeline from '../components/AutomationTimeline'
 import CandidateScoreCard from '../components/CandidateScoreCard'
 import PageHeader from '../components/PageHeader'
+import StageHistoryPanel from '../components/StageHistoryPanel'
 import { applicants as dummyApplicants } from '../data/dummyApplicants'
 import useSupabaseData from '../hooks/useSupabaseData'
 import { createDocumentSignedUrl, fetchApplicants, updateApplicantDecision } from '../services/supabaseData'
@@ -174,6 +175,10 @@ function ApplicantDetailPage() {
 
       <div className="mb-6">
         <AutomationEventsPanel events={applicant.automationEvents} />
+      </div>
+
+      <div className="mb-6">
+        <StageHistoryPanel history={applicant.stageHistory} />
       </div>
 
       <div className="grid gap-5 xl:grid-cols-2">
