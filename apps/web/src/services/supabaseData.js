@@ -608,7 +608,7 @@ async function applyPlaceholderJobEffects(job) {
   if (effectError) throw effectError
 }
 
-export async function processNextAutomationJob() {
+async function processNextAutomationJobLocally() {
   if (!isSupabaseConfigured) {
     throw new Error('Supabase is not configured.')
   }
@@ -692,6 +692,43 @@ export async function processNextAutomationJob() {
     await updateWorkflowAfterJob(job.workflow_run_id)
     throw processError
   }
+}
+
+async function processNextAutomationJobWithEdgeFunction() {
+  const { data, error } = await supabase.functions.invoke('process-automation-jobs', {
+    body: { mode: 'process-next' },
+  })
+
+  if (error) throw error
+  if (data?.error) throw new Error(data.error)
+
+  return {
+    processed: Boolean(data?.processed),
+    message: data?.message ?? 'Automation function completed.',
+    job: data?.job ?? null,
+    source: 'edge-function',
+  }
+}
+
+export async function processNextAutomationJob({ preferEdgeFunction = true } = {}) {
+  if (!isSupabaseConfigured) {
+    throw new Error('Supabase is not configured.')
+  }
+
+  if (preferEdgeFunction) {
+    try {
+      return await processNextAutomationJobWithEdgeFunction()
+    } catch (edgeError) {
+      const fallbackResult = await processNextAutomationJobLocally()
+      return {
+        ...fallbackResult,
+        source: 'local-fallback',
+        message: `${fallbackResult.message} Edge Function fallback used: ${edgeError.message}`,
+      }
+    }
+  }
+
+  return processNextAutomationJobLocally()
 }
 
 async function createWorkflowRun(applicantId, application) {

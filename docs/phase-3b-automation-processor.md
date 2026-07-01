@@ -1,11 +1,15 @@
 # Phase 3B - Automation Processor Placeholder
 
-Phase 3B-1 makes the automation queue actionable without connecting live providers yet.
+Phase 3B makes the automation queue actionable without connecting live providers yet.
 
 ## What Was Added
 
 - Dashboard action: `Run next job`
-- Frontend placeholder processor:
+- Edge Function-first processor flow:
+  - dashboard calls `process-automation-jobs`
+  - if the function is not deployed, the frontend uses the local demo fallback
+  - keeps the demo working while the backend path is prepared
+- Placeholder processor:
   - finds the next ready queued automation job
   - marks it `running`
   - simulates provider work
@@ -38,11 +42,11 @@ Phase 3B-1 makes the automation queue actionable without connecting live provide
   - moves applicant to `License Verified`
   - writes stage history and automation event
 
-## Edge Function Scaffold
+## Edge Function
 
-The folder `supabase/functions/process-automation-jobs/` contains a deployable starting point for moving this processor into Supabase Edge Functions.
+The folder `supabase/functions/process-automation-jobs/` contains the deploy-ready placeholder function.
 
-The frontend currently uses the direct placeholder processor so the demo can work immediately without function deployment.
+Deployment notes live in `docs/supabase-edge-functions.md`.
 
 ## Still Not Real Integrations
 
