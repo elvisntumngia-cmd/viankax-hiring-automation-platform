@@ -17,7 +17,12 @@ function formatQueueTime(dateValue) {
   }).format(new Date(dateValue))
 }
 
-function AutomationQueuePanel({ jobs = [], title = 'Automation queue', description = 'Queued backend tasks waiting for worker functions or integrations.' }) {
+function AutomationQueuePanel({
+  jobs = [],
+  title = 'Automation queue',
+  description = 'Queued backend tasks waiting for worker functions or integrations.',
+  action = null,
+}) {
   const sortedJobs = [...jobs].sort((first, second) => {
     if (!first.scheduledFor || !second.scheduledFor) return 0
     return new Date(first.scheduledFor) - new Date(second.scheduledFor)
@@ -35,12 +40,15 @@ function AutomationQueuePanel({ jobs = [], title = 'Automation queue', descripti
           <h2 className="text-lg font-semibold text-white">{title}</h2>
           <p className="mt-1 text-sm text-zinc-500">{description}</p>
         </div>
-        <div className="flex flex-wrap gap-2">
-          {['queued', 'running', 'blocked', 'completed', 'failed'].map((status) => (
-            <span key={status} className={`rounded-full border px-3 py-1 text-xs font-semibold ${statusClass[status]}`}>
-              {status}: {counts[status] ?? 0}
-            </span>
-          ))}
+        <div className="flex flex-col gap-3 sm:items-end">
+          {action}
+          <div className="flex flex-wrap gap-2 sm:justify-end">
+            {['queued', 'running', 'blocked', 'completed', 'failed'].map((status) => (
+              <span key={status} className={`rounded-full border px-3 py-1 text-xs font-semibold ${statusClass[status]}`}>
+                {status}: {counts[status] ?? 0}
+              </span>
+            ))}
+          </div>
         </div>
       </div>
 

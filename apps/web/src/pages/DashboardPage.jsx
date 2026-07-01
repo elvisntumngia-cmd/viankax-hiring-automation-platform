@@ -1,16 +1,18 @@
-import { ArrowRight, Brain, CalendarCheck, CheckCircle2, FileWarning, ShieldAlert, ShieldCheck, Star, UserPlus } from 'lucide-react'
+import { ArrowRight, Brain, CalendarCheck, CheckCircle2, FileWarning, Play, ShieldAlert, ShieldCheck, Star, UserPlus } from 'lucide-react'
+import { useState } from 'react'
 import { Link } from 'react-router-dom'
 import AutomationQueuePanel from '../components/AutomationQueuePanel'
 import PageHeader from '../components/PageHeader'
 import { applicants as dummyApplicants } from '../data/dummyApplicants'
 import useSupabaseData from '../hooks/useSupabaseData'
-import { fetchApplicants, fetchAutomationQueueSummary } from '../services/supabaseData'
+import { fetchApplicants, fetchAutomationQueueSummary, processNextAutomationJob } from '../services/supabaseData'
 import { getStoredApplications } from '../utils/applicationStorage'
 import { getRecentApplicantActivity, matchesPipelinePreset } from '../utils/candidateInsights'
 
 function DashboardPage() {
-  const { data: backendApplicants, status, error } = useSupabaseData(fetchApplicants, dummyApplicants)
-  const { data: automationQueue, status: queueStatus, error: queueError } = useSupabaseData(fetchAutomationQueueSummary, [])
+  const [processorState, setProcessorState] = useState({ busy: false, message: '', error: '' })
+  const { data: backendApplicants, status, error, reload: reloadApplicants } = useSupabaseData(fetchApplicants, dummyApplicants)
+  const { data: automationQueue, status: queueStatus, error: queueError, reload: reloadAutomationQueue } = useSupabaseData(fetchAutomationQueueSummary, [])
   const applicants = [...backendApplicants, ...getStoredApplications()]
   const pendingAiReview = applicants.filter((applicant) => matchesPipelinePreset(applicant, 'pending-ai-review')).length
   const pendingComplianceReview = applicants.filter((applicant) => matchesPipelinePreset(applicant, 'pending-compliance-review')).length
@@ -24,6 +26,27 @@ function DashboardPage() {
     ['Pending Interviews', pendingInterviews, 'voice or manager interviews', 'from-emerald-950 to-emerald-800', CalendarCheck, 'pending-interviews'],
     ['Strong Candidates', strongCandidates, '85+ overall score', 'from-teal-950 to-zinc-900', Star, 'strong-candidates'],
   ]
+
+  async function runAutomationJob() {
+    setProcessorState({ busy: true, message: '', error: '' })
+
+    try {
+      const result = await processNextAutomationJob()
+      await Promise.all([reloadAutomationQueue(), reloadApplicants()])
+      setProcessorState({
+        busy: false,
+        message: result.message,
+        error: '',
+      })
+    } catch (processorError) {
+      await reloadAutomationQueue()
+      setProcessorState({
+        busy: false,
+        message: '',
+        error: processorError.message,
+      })
+    }
+  }
 
   return (
     <section>
@@ -135,10 +158,31 @@ function DashboardPage() {
             Automation queue could not load from Supabase. {queueError?.message}
           </div>
         ) : null}
+        {processorState.message ? (
+          <div className="mb-5 rounded-lg border border-emerald-400/30 bg-emerald-500/10 p-4 text-sm font-semibold text-emerald-200">
+            {processorState.message}
+          </div>
+        ) : null}
+        {processorState.error ? (
+          <div className="mb-5 rounded-lg border border-red-400/30 bg-red-500/10 p-4 text-sm font-semibold text-red-200">
+            {processorState.error}
+          </div>
+        ) : null}
         <AutomationQueuePanel
           jobs={automationQueue}
           title="Automation job queue"
           description="Phase 3A backend foundation: queued workflow tasks for confirmations, resume parsing, AI screening, compliance review, voice interviews, and scheduling."
+          action={
+            <button
+              type="button"
+              onClick={runAutomationJob}
+              disabled={processorState.busy || queueStatus === 'loading'}
+              className="inline-flex w-fit items-center justify-center gap-2 rounded-md bg-[#0084FF] px-4 py-2 text-sm font-semibold text-white hover:bg-blue-500 disabled:cursor-wait disabled:opacity-70"
+            >
+              <Play size={16} />
+              {processorState.busy ? 'Running...' : 'Run next job'}
+            </button>
+          }
         />
       </div>
     </section>

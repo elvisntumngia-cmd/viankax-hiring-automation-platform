@@ -1,20 +1,34 @@
-import { useEffect, useState } from 'react'
+import { useCallback, useEffect, useState } from 'react'
 
 function useSupabaseData(loader, fallbackData = []) {
   const [data, setData] = useState(fallbackData)
   const [status, setStatus] = useState('idle')
   const [error, setError] = useState(null)
 
+  const loadData = useCallback(async () => {
+    setStatus('loading')
+    setError(null)
+
+    try {
+      const result = await loader()
+      setData(result)
+      setStatus('success')
+    } catch (loadError) {
+      setError(loadError)
+      setStatus('error')
+    }
+  }, [loader])
+
   useEffect(() => {
     let isMounted = true
 
-    async function loadData() {
+    async function loadMountedData() {
       setStatus('loading')
       setError(null)
 
       try {
         const result = await loader()
-        if (isMounted && result.length > 0) {
+        if (isMounted) {
           setData(result)
         }
         if (isMounted) setStatus('success')
@@ -26,14 +40,14 @@ function useSupabaseData(loader, fallbackData = []) {
       }
     }
 
-    loadData()
+    loadMountedData()
 
     return () => {
       isMounted = false
     }
   }, [loader])
 
-  return { data, status, error }
+  return { data, status, error, reload: loadData }
 }
 
 export default useSupabaseData
