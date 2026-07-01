@@ -24,8 +24,19 @@ type AutomationJob = {
   }
 }
 
+type NotificationRow = {
+  id: string
+  recipient: string
+  subject: string | null
+  message: string
+}
+
 function jsonResponse(body: Record<string, unknown>, status = 200) {
   return Response.json(body, { status, headers: corsHeaders })
+}
+
+function errorMessage(error: unknown) {
+  return error instanceof Error ? error.message : String(error)
 }
 
 function processedEventForJob(job: AutomationJob) {
@@ -54,7 +65,48 @@ function processedEventForJob(job: AutomationJob) {
       jobType: job.job_type,
       description,
       processor: 'supabase_edge_function',
+      provider: job.job_type.includes('email') ? 'resend_or_placeholder' : 'placeholder',
     },
+  }
+}
+
+async function sendResendEmail(notification: NotificationRow) {
+  const resendApiKey = Deno.env.get('RESEND_API_KEY')
+  const resendFromEmail = Deno.env.get('RESEND_FROM_EMAIL') ?? 'ViankaX Hiring <onboarding@resend.dev>'
+
+  if (!resendApiKey) {
+    return {
+      sent: false,
+      providerMessageId: null,
+      provider: 'placeholder',
+      note: 'RESEND_API_KEY is not configured; placeholder email send was used.',
+    }
+  }
+
+  const response = await fetch('https://api.resend.com/emails', {
+    method: 'POST',
+    headers: {
+      Authorization: `Bearer ${resendApiKey}`,
+      'Content-Type': 'application/json',
+    },
+    body: JSON.stringify({
+      from: resendFromEmail,
+      to: notification.recipient,
+      subject: notification.subject ?? 'ViankaX Hiring Automation',
+      text: notification.message,
+    }),
+  })
+
+  const result = await response.json()
+  if (!response.ok) {
+    throw new Error(result?.message ?? 'Resend email request failed.')
+  }
+
+  return {
+    sent: true,
+    providerMessageId: result?.id ?? null,
+    provider: 'resend',
+    note: 'Email sent with Resend.',
   }
 }
 
@@ -101,14 +153,35 @@ async function applyPlaceholderJobEffects(supabase: ReturnType<typeof createClie
   }
 
   if (job.job_type === 'send_confirmation_email' || job.job_type === 'send_ai_assessment') {
-    effects.push(
-      supabase
-        .from('notification_queue')
-        .update({ notification_status: 'sent', sent_at: now, updated_at: now })
-        .eq('applicant_id', job.applicant_id)
-        .eq('channel', 'email')
-        .eq('notification_status', 'queued'),
-    )
+    const { data: notifications, error: notificationError } = await supabase
+      .from('notification_queue')
+      .select('id, recipient, subject, message')
+      .eq('applicant_id', job.applicant_id)
+      .eq('channel', 'email')
+      .eq('notification_status', 'queued')
+      .limit(1)
+
+    if (notificationError) throw notificationError
+    const notification = notifications?.[0] as NotificationRow | undefined
+
+    if (notification) {
+      const emailResult = await sendResendEmail(notification)
+      effects.push(
+        supabase
+          .from('notification_queue')
+          .update({
+            notification_status: 'sent',
+            sent_at: now,
+            provider_message_id: emailResult.providerMessageId,
+            metadata: {
+              provider: emailResult.provider,
+              note: emailResult.note,
+            },
+            updated_at: now,
+          })
+          .eq('id', notification.id),
+      )
+    }
   }
 
   if (job.job_type === 'parse_resume') {
@@ -254,7 +327,7 @@ Deno.serve(async (request) => {
         .from('automation_jobs')
         .update({
           job_status: 'failed',
-          last_error: processError.message,
+          last_error: errorMessage(processError),
           updated_at: new Date().toISOString(),
         })
         .eq('id', job.id)
@@ -263,6 +336,6 @@ Deno.serve(async (request) => {
       throw processError
     }
   } catch (error) {
-    return jsonResponse({ processed: false, error: error.message }, 500)
+    return jsonResponse({ processed: false, error: errorMessage(error) }, 500)
   }
 })

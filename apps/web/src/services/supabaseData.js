@@ -460,6 +460,40 @@ export async function fetchAutomationQueueSummary() {
   }))
 }
 
+export async function fetchAutomationRunHistory() {
+  if (!isSupabaseConfigured) return []
+
+  const { data, error } = await supabase
+    .from('automation_events')
+    .select(`
+      id,
+      event_type,
+      event_status,
+      event_label,
+      metadata,
+      created_at,
+      applicants(full_name, current_stage, jobs(title))
+    `)
+    .order('created_at', { ascending: false })
+    .limit(16)
+
+  if (error) throw error
+
+  return data.map((event) => ({
+    id: event.id,
+    type: event.event_type,
+    status: event.event_status,
+    label: event.event_label,
+    description: event.metadata?.description ?? '',
+    processor: event.metadata?.processor ?? 'frontend_or_seed',
+    provider: event.metadata?.provider ?? event.metadata?.providerMessageId ?? 'not_applicable',
+    applicantName: event.applicants?.full_name ?? 'Unknown applicant',
+    applicantStage: event.applicants?.current_stage ?? 'Stage pending',
+    role: event.applicants?.jobs?.title ?? 'Role pending',
+    createdAt: event.created_at,
+  }))
+}
+
 export async function createDocumentSignedUrl(document) {
   if (!isSupabaseConfigured) {
     throw new Error('Supabase is not configured.')

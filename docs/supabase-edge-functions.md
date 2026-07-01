@@ -14,10 +14,22 @@ Install or confirm Supabase CLI:
 supabase --version
 ```
 
+If PowerShell says `supabase` is not recognized, install the CLI first. One simple option is:
+
+```powershell
+npm install -g supabase
+```
+
 Login:
 
 ```powershell
 supabase login
+```
+
+If you are running inside a non-interactive terminal and login fails, create a Supabase access token in the Supabase dashboard, then run:
+
+```powershell
+supabase login --token "your_supabase_access_token"
 ```
 
 Link this repo to the Supabase project:
@@ -43,6 +55,20 @@ Supabase automatically provides these to deployed functions:
 
 Do not put the service role key in React or `.env.local`.
 
+## Optional Resend Email Secrets
+
+To send real confirmation emails instead of placeholder sends:
+
+```powershell
+supabase secrets set RESEND_API_KEY="your_resend_api_key"
+supabase secrets set RESEND_FROM_EMAIL="ViankaX Hiring <your_verified_sender@yourdomain.com>"
+```
+
+Notes:
+
+- The sender must be verified in Resend.
+- If `RESEND_API_KEY` is missing, the function still completes using placeholder email behavior.
+
 ## Test From Dashboard
 
 1. Open `/dashboard`.
@@ -58,6 +84,7 @@ The function processes one queued job at a time and still uses placeholder logic
 - marks queued job as `running`
 - simulates provider work
 - updates notification records where applicable
+- sends real email through Resend only when `RESEND_API_KEY` is configured
 - writes automation events
 - updates stage history for resume/license jobs
 - marks job `completed`

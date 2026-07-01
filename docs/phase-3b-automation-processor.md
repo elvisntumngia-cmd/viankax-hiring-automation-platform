@@ -5,6 +5,11 @@ Phase 3B makes the automation queue actionable without connecting live providers
 ## What Was Added
 
 - Dashboard action: `Run next job`
+- Dashboard run history panel:
+  - recent automation events
+  - processor source
+  - provider marker
+  - applicant and role context
 - Edge Function-first processor flow:
   - dashboard calls `process-automation-jobs`
   - if the function is not deployed, the frontend uses the local demo fallback
@@ -25,6 +30,8 @@ Phase 3B makes the automation queue actionable without connecting live providers
   - writes a confirmation SMS automation event
 
 - `send_confirmation_email`
+  - sends through Resend when `RESEND_API_KEY` is configured
+  - otherwise records a placeholder send
   - marks queued email notification as `sent`
   - writes a confirmation email automation event
 
@@ -48,10 +55,10 @@ The folder `supabase/functions/process-automation-jobs/` contains the deploy-rea
 
 Deployment notes live in `docs/supabase-edge-functions.md`.
 
-## Still Not Real Integrations
+## Still Placeholder Or Partial Integrations
 
 - No real SMS provider call.
-- No real email provider call.
+- Email can send through Resend after function deployment and secret setup.
 - No OpenAI resume parsing yet.
 - No live license database check.
 - No voice interview provider.

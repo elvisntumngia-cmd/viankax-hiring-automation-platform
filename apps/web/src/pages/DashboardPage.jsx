@@ -2,10 +2,11 @@ import { ArrowRight, Brain, CalendarCheck, CheckCircle2, FileWarning, Play, Shie
 import { useState } from 'react'
 import { Link } from 'react-router-dom'
 import AutomationQueuePanel from '../components/AutomationQueuePanel'
+import AutomationRunHistoryPanel from '../components/AutomationRunHistoryPanel'
 import PageHeader from '../components/PageHeader'
 import { applicants as dummyApplicants } from '../data/dummyApplicants'
 import useSupabaseData from '../hooks/useSupabaseData'
-import { fetchApplicants, fetchAutomationQueueSummary, processNextAutomationJob } from '../services/supabaseData'
+import { fetchApplicants, fetchAutomationQueueSummary, fetchAutomationRunHistory, processNextAutomationJob } from '../services/supabaseData'
 import { getStoredApplications } from '../utils/applicationStorage'
 import { getRecentApplicantActivity, matchesPipelinePreset } from '../utils/candidateInsights'
 
@@ -13,6 +14,7 @@ function DashboardPage() {
   const [processorState, setProcessorState] = useState({ busy: false, message: '', error: '' })
   const { data: backendApplicants, status, error, reload: reloadApplicants } = useSupabaseData(fetchApplicants, dummyApplicants)
   const { data: automationQueue, status: queueStatus, error: queueError, reload: reloadAutomationQueue } = useSupabaseData(fetchAutomationQueueSummary, [])
+  const { data: automationHistory, reload: reloadAutomationHistory } = useSupabaseData(fetchAutomationRunHistory, [])
   const applicants = [...backendApplicants, ...getStoredApplications()]
   const pendingAiReview = applicants.filter((applicant) => matchesPipelinePreset(applicant, 'pending-ai-review')).length
   const pendingComplianceReview = applicants.filter((applicant) => matchesPipelinePreset(applicant, 'pending-compliance-review')).length
@@ -32,7 +34,7 @@ function DashboardPage() {
 
     try {
       const result = await processNextAutomationJob()
-      await Promise.all([reloadAutomationQueue(), reloadApplicants()])
+      await Promise.all([reloadAutomationQueue(), reloadApplicants(), reloadAutomationHistory()])
       setProcessorState({
         busy: false,
         message: result.message,
@@ -40,6 +42,7 @@ function DashboardPage() {
       })
     } catch (processorError) {
       await reloadAutomationQueue()
+      await reloadAutomationHistory()
       setProcessorState({
         busy: false,
         message: '',
@@ -184,6 +187,10 @@ function DashboardPage() {
             </button>
           }
         />
+      </div>
+
+      <div className="mt-6 sm:mt-8">
+        <AutomationRunHistoryPanel history={automationHistory} />
       </div>
     </section>
   )
