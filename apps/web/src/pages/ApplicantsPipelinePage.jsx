@@ -35,7 +35,7 @@ function StagePill({ stage }) {
 function ApplicantsPipelinePage() {
   const [searchParams, setSearchParams] = useSearchParams()
   const { data: backendApplicants, status, error } = useSupabaseData(fetchApplicants, dummyApplicants)
-  const applicants = [...getStoredApplications(), ...backendApplicants]
+  const applicants = [...backendApplicants, ...getStoredApplications()]
   const searchQuery = searchParams.get('q') ?? ''
   const stageFilter = searchParams.get('stage') ?? 'All Stages'
   const presetFilter = searchParams.get('filter') ?? 'all'
@@ -110,6 +110,11 @@ function ApplicantsPipelinePage() {
       {status === 'error' ? (
         <div className="mb-5 rounded-lg border border-amber-400/30 bg-amber-500/10 p-4 text-sm text-amber-200">
           Supabase applicants could not load, so fallback records are showing. {error?.message}
+        </div>
+      ) : null}
+      {status === 'loading' ? (
+        <div className="mb-5 rounded-lg border border-blue-400/30 bg-blue-500/10 p-4 text-sm text-blue-200">
+          Loading Supabase applicants...
         </div>
       ) : null}
 

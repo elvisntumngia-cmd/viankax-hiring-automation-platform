@@ -9,7 +9,7 @@ import { getRecentApplicantActivity, matchesPipelinePreset } from '../utils/cand
 
 function DashboardPage() {
   const { data: backendApplicants, status, error } = useSupabaseData(fetchApplicants, dummyApplicants)
-  const applicants = [...getStoredApplications(), ...backendApplicants]
+  const applicants = [...backendApplicants, ...getStoredApplications()]
   const pendingAiReview = applicants.filter((applicant) => matchesPipelinePreset(applicant, 'pending-ai-review')).length
   const pendingComplianceReview = applicants.filter((applicant) => matchesPipelinePreset(applicant, 'pending-compliance-review')).length
   const pendingInterviews = applicants.filter((applicant) => matchesPipelinePreset(applicant, 'pending-interviews')).length

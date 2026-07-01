@@ -55,12 +55,16 @@ function getDocumentFile(applicant, documentType) {
   return applicant.documentFiles?.find((document) => document.type === documentType)
 }
 
+function isSupabaseRecord(applicant) {
+  return /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(applicant.id)
+}
+
 function ApplicantDetailPage() {
   const { applicantId } = useParams()
   const [actionState, setActionState] = useState({ busy: '', message: '', error: '' })
   const [applicantOverride, setApplicantOverride] = useState(null)
   const { data: backendApplicants, status, error } = useSupabaseData(fetchApplicants, dummyApplicants)
-  const applicants = [...getStoredApplications(), ...backendApplicants]
+  const applicants = [...backendApplicants, ...getStoredApplications()]
   const selectedApplicant = applicants.find((item) => item.id === applicantId)
   const applicant = selectedApplicant && applicantOverride?.id === selectedApplicant.id
     ? { ...selectedApplicant, ...applicantOverride }
@@ -119,6 +123,7 @@ function ApplicantDetailPage() {
   }
 
   const scores = getCandidateScores(applicant)
+  const canUpdateDecision = isSupabaseRecord(applicant)
 
   return (
     <section>
@@ -246,6 +251,11 @@ function ApplicantDetailPage() {
 
         <InfoCard title="Notes & decision controls">
           <p>{applicant.notes}</p>
+          {!canUpdateDecision ? (
+            <p className="mt-4 rounded-md border border-amber-400/25 bg-amber-500/10 p-3 text-sm font-semibold text-amber-300">
+              Decision actions are available for Supabase applicant records only. Open a Supabase-loaded applicant from the pipeline after the dashboard finishes loading.
+            </p>
+          ) : null}
           {actionState.message ? (
             <p className="mt-4 rounded-md border border-emerald-400/25 bg-emerald-500/10 p-3 text-sm font-semibold text-emerald-300">
               {actionState.message}
@@ -261,7 +271,7 @@ function ApplicantDetailPage() {
               <button
                 key={decision}
                 type="button"
-                disabled={Boolean(actionState.busy)}
+                disabled={Boolean(actionState.busy) || !canUpdateDecision}
                 onClick={() => handleDecision(decision)}
                 className="rounded-md border border-white/[0.12] bg-white/[0.04] px-3 py-2 font-semibold text-white hover:border-[#0084FF] hover:text-[#0084FF] disabled:cursor-wait disabled:opacity-60"
               >
