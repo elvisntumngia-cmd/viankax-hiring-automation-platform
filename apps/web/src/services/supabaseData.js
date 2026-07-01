@@ -183,6 +183,25 @@ function notificationsFromRows(rows = []) {
   }))
 }
 
+function aiScreeningTasksFromRows(rows = []) {
+  return rows.map((task) => ({
+    id: task.id,
+    status: task.task_status,
+    promptSnapshot: task.prompt_snapshot,
+    candidateContext: task.candidate_context ?? {},
+    summary: task.ai_summary,
+    roleFitScore: task.role_fit_score,
+    professionalismScore: task.professionalism_score,
+    communicationScore: task.communication_score,
+    availabilityScore: task.availability_score,
+    riskFlags: task.risk_flags ?? [],
+    recommendation: task.recommendation,
+    completedAt: task.completed_at,
+    templateName: task.ai_screening_templates?.name ?? 'AI screening template',
+    roleFamily: task.ai_screening_templates?.role_family ?? 'general',
+  }))
+}
+
 function mapAutomationQueueJob(job) {
   return {
     id: job.id,
@@ -219,6 +238,8 @@ function mapApplicant(row) {
   const workflowRuns = workflowRunsFromRows(row.workflow_runs)
   const automationJobs = automationJobsFromRows(row.automation_jobs)
   const notifications = notificationsFromRows(row.notification_queue)
+  const aiScreeningTasks = aiScreeningTasksFromRows(row.ai_screening_tasks)
+  const latestAiScreening = aiScreeningTasks[0]
   const latestEvent = [...automationEvents].sort((first, second) => {
     if (!first.createdAt || !second.createdAt) return 0
     return new Date(second.createdAt) - new Date(first.createdAt)
@@ -260,6 +281,17 @@ function mapApplicant(row) {
     workflowRuns,
     automationJobs,
     notifications,
+    aiScreeningTasks,
+    aiScreening: latestAiScreening ?? {
+      status: 'not_started',
+      summary: 'AI screening has not been queued yet.',
+      roleFitScore: null,
+      professionalismScore: null,
+      communicationScore: null,
+      availabilityScore: null,
+      riskFlags: [],
+      recommendation: 'Pending AI Screening',
+    },
     latestEvent,
     lastUpdatedAt: row.updated_at ?? row.submitted_at,
     knockout: row.knockout_result,
@@ -375,6 +407,21 @@ export async function fetchApplicants() {
       workflow_runs(id, workflow_name, run_status, current_step, started_at, completed_at, metadata, created_at, updated_at),
       automation_jobs(id, job_type, job_label, job_status, priority, scheduled_for, attempts, last_error, payload, created_at, updated_at),
       notification_queue(id, channel, recipient, subject, message, notification_status, scheduled_for, sent_at, last_error, metadata),
+      ai_screening_tasks(
+        id,
+        task_status,
+        prompt_snapshot,
+        candidate_context,
+        ai_summary,
+        role_fit_score,
+        professionalism_score,
+        communication_score,
+        availability_score,
+        risk_flags,
+        recommendation,
+        completed_at,
+        ai_screening_templates(name, role_family)
+      ),
       pipeline_stage_history(from_stage, to_stage, changed_by, reason, created_at),
       screening_answers(question, answer),
       candidate_scores(
@@ -408,6 +455,21 @@ export async function lookupApplicationStatus({ email, phone }) {
       workflow_runs(id, workflow_name, run_status, current_step, started_at, completed_at, metadata, created_at, updated_at),
       automation_jobs(id, job_type, job_label, job_status, priority, scheduled_for, attempts, last_error, payload, created_at, updated_at),
       notification_queue(id, channel, recipient, subject, message, notification_status, scheduled_for, sent_at, last_error, metadata),
+      ai_screening_tasks(
+        id,
+        task_status,
+        prompt_snapshot,
+        candidate_context,
+        ai_summary,
+        role_fit_score,
+        professionalism_score,
+        communication_score,
+        availability_score,
+        risk_flags,
+        recommendation,
+        completed_at,
+        ai_screening_templates(name, role_family)
+      ),
       pipeline_stage_history(from_stage, to_stage, changed_by, reason, created_at),
       screening_answers(question, answer),
       candidate_scores(
@@ -540,6 +602,7 @@ function processedEventForJob(job) {
     send_confirmation_email: ['confirmation_email_sent', 'Confirmation Email Sent', 'Placeholder email confirmation was marked as sent.'],
     parse_resume: ['resume_screened', 'Resume Screened', 'Placeholder resume parsing completed and candidate moved forward.'],
     send_ai_assessment: ['ai_assessment_sent', 'AI Assessment Sent', 'Placeholder AI screening assessment invite was queued for the candidate.'],
+    evaluate_ai_assessment: ['ai_screening_evaluated', 'AI Screening Evaluated', 'Placeholder AI screening evaluation generated structured candidate scores.'],
     verify_license: ['license_verification_completed', 'License Verification Completed', 'Placeholder license verification completed.'],
     send_scheduling_link: ['scheduling_link_sent', 'Scheduling Link Sent', 'Placeholder scheduling link was marked as sent.'],
     voice_interview_analysis: ['voice_interview_analyzed', 'Voice Interview Analyzed', 'Placeholder voice interview analysis completed.'],
@@ -606,6 +669,70 @@ async function applyPlaceholderJobEffects(job) {
           to_stage: 'Resume Screened',
           changed_by: 'automation_processor',
           reason: 'Placeholder resume parsing completed.',
+        }),
+    )
+  }
+
+  if (job.job_type === 'evaluate_ai_assessment') {
+    effects.push(
+      supabase
+        .from('ai_screening_tasks')
+        .update({
+          task_status: 'completed',
+          ai_summary: 'Placeholder AI screening found solid role fit, professional communication, and workable availability. Review risk flags before advancing.',
+          role_fit_score: 84,
+          professionalism_score: 86,
+          communication_score: 82,
+          availability_score: 80,
+          risk_flags: [],
+          recommendation: 'Qualified',
+          completed_at: now,
+          updated_at: now,
+        })
+        .eq('applicant_id', job.applicant_id)
+        .in('task_status', ['queued', 'running']),
+    )
+    effects.push(
+      supabase
+        .from('candidate_scores')
+        .update({
+          screening_score: 84,
+          overall_candidate_score: 86,
+          updated_at: now,
+        })
+        .eq('applicant_id', job.applicant_id),
+    )
+    effects.push(
+      supabase
+        .from('ai_recommendations')
+        .update({
+          recommendation: 'Qualified',
+          confidence: 86,
+          summary: 'Placeholder AI screening indicates the candidate is qualified for HR review, pending compliance and interview steps.',
+          risk_flags: [],
+          updated_at: now,
+        })
+        .eq('applicant_id', job.applicant_id),
+    )
+    effects.push(
+      supabase
+        .from('applicants')
+        .update({
+          current_stage: 'Assessment Completed',
+          status: 'Qualified',
+          updated_at: now,
+        })
+        .eq('id', job.applicant_id),
+    )
+    effects.push(
+      supabase
+        .from('pipeline_stage_history')
+        .insert({
+          applicant_id: job.applicant_id,
+          from_stage: job.applicants?.current_stage ?? null,
+          to_stage: 'Assessment Completed',
+          changed_by: 'automation_processor',
+          reason: 'Placeholder AI screening evaluation completed.',
         }),
     )
   }
@@ -848,6 +975,16 @@ function automationJobRows(applicantId, workflowRunId, application, uploadedDocu
     {
       applicant_id: applicantId,
       workflow_run_id: workflowRunId,
+      job_type: 'evaluate_ai_assessment',
+      job_label: 'Evaluate AI screening assessment',
+      job_status: 'queued',
+      priority: 5,
+      scheduled_for: new Date(Date.now() + 10 * 60 * 1000).toISOString(),
+      payload: { engine: 'openai_placeholder', mode: 'structured_candidate_scoring' },
+    },
+    {
+      applicant_id: applicantId,
+      workflow_run_id: workflowRunId,
       job_type: 'verify_license',
       job_label: 'Verify license / guard card',
       job_status: uploadedDocuments.guardCard ? 'queued' : 'blocked',
@@ -879,6 +1016,26 @@ function notificationRows(applicantId, application) {
       metadata: { template: 'application_confirmation' },
     },
   ]
+}
+
+function aiScreeningTaskRow(applicantId, application) {
+  return {
+    applicant_id: applicantId,
+    task_status: application.knockoutResult === 'Failed' ? 'blocked' : 'queued',
+    prompt_snapshot: 'Evaluate candidate for role fit, professionalism, communication, availability, and risk flags.',
+    candidate_context: {
+      jobTitle: application.jobTitle,
+      location: application.location,
+      knockoutResult: application.knockoutResult,
+      screeningAnswers: Object.fromEntries(application.screeningAnswers ?? []),
+    },
+    ai_summary: application.knockoutResult === 'Failed'
+      ? 'AI screening blocked because required knockout criteria failed.'
+      : null,
+    risk_flags: application.knockoutFlags ?? [],
+    recommendation: application.knockoutResult === 'Failed' ? 'Do Not Advance' : null,
+    completed_at: application.knockoutResult === 'Failed' ? new Date().toISOString() : null,
+  }
 }
 
 export async function submitApplicationToSupabase(application, uploadFiles = {}) {
@@ -985,6 +1142,7 @@ export async function submitApplicationToSupabase(application, uploadFiles = {})
     supabase.from('ai_recommendations').insert(recommendationRow),
     supabase.from('automation_events').insert(automationEventRows),
     supabase.from('automation_jobs').insert(automationJobRows(applicantId, workflowRunId, application, uploadedDocuments)),
+    supabase.from('ai_screening_tasks').insert(aiScreeningTaskRow(applicantId, application)),
     supabase.from('screening_answers').insert(screeningRows),
     supabase.from('applicant_documents').insert(documentRowsFromApplication(applicantId, application, uploadedDocuments)),
   ]

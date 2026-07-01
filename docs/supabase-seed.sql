@@ -277,6 +277,138 @@ on conflict (applicant_id) do update set
   risk_flags = excluded.risk_flags,
   updated_at = now();
 
+insert into ai_screening_templates (id, name, role_family, prompt, questions, scoring_rubric, status)
+values
+  (
+    '30000000-0000-0000-0000-000000000001',
+    'Security Candidate Screening V1',
+    'security',
+    'Evaluate the candidate for reliability, professionalism, communication, availability, security experience, and compliance readiness. Return structured scores and risk flags.',
+    '[
+      "Why are you interested in this role?",
+      "Describe your security experience.",
+      "How do you handle difficult situations with the public?",
+      "Are you comfortable with incident reporting and post orders?",
+      "How reliable is your availability for assigned shifts?"
+    ]'::jsonb,
+    '{
+      "roleFitScore":"Experience, role alignment, shift fit",
+      "professionalismScore":"Tone, judgment, workplace readiness",
+      "communicationScore":"Clarity, public interaction, reporting readiness",
+      "availabilityScore":"Schedule fit and reliability"
+    }'::jsonb,
+    'active'
+  )
+on conflict (id) do update set
+  name = excluded.name,
+  role_family = excluded.role_family,
+  prompt = excluded.prompt,
+  questions = excluded.questions,
+  scoring_rubric = excluded.scoring_rubric,
+  status = excluded.status,
+  updated_at = now();
+
+delete from ai_screening_tasks
+where applicant_id in (
+  '10000000-0000-0000-0000-000000000001',
+  '10000000-0000-0000-0000-000000000002',
+  '10000000-0000-0000-0000-000000000003',
+  '10000000-0000-0000-0000-000000000004',
+  '10000000-0000-0000-0000-000000000005'
+);
+
+insert into ai_screening_tasks (
+  applicant_id,
+  template_id,
+  task_status,
+  prompt_snapshot,
+  candidate_context,
+  ai_summary,
+  role_fit_score,
+  professionalism_score,
+  communication_score,
+  availability_score,
+  risk_flags,
+  recommendation,
+  completed_at
+)
+values
+  (
+    '10000000-0000-0000-0000-000000000001',
+    '30000000-0000-0000-0000-000000000001',
+    'queued',
+    'Evaluate candidate for security role readiness.',
+    '{"experience":"Entry-level event security and access control","availability":"Evening and weekend interest"}'::jsonb,
+    null,
+    null,
+    null,
+    null,
+    null,
+    array[]::text[],
+    null,
+    null
+  ),
+  (
+    '10000000-0000-0000-0000-000000000002',
+    '30000000-0000-0000-0000-000000000001',
+    'completed',
+    'Evaluate candidate for security role readiness.',
+    '{"experience":"Three years commercial property security","availability":"Consistent overnight shifts"}'::jsonb,
+    'AI screening indicates strong role fit, professional communication, reliable schedule fit, and clear comfort with public interaction.',
+    91,
+    93,
+    88,
+    90,
+    array[]::text[],
+    'Strong Candidate',
+    now() - interval '1 hour'
+  ),
+  (
+    '10000000-0000-0000-0000-000000000003',
+    '30000000-0000-0000-0000-000000000001',
+    'completed',
+    'Evaluate candidate for armed security role readiness.',
+    '{"experience":"Armed site security and patrol background","availability":"Steady hours requested","compliance":"License upload missing"}'::jsonb,
+    'Candidate appears experienced and professional, but compliance is blocked until license documentation is uploaded.',
+    86,
+    84,
+    80,
+    78,
+    array['Missing license upload'],
+    'Compliance Hold',
+    now() - interval '2 hours'
+  ),
+  (
+    '10000000-0000-0000-0000-000000000004',
+    '30000000-0000-0000-0000-000000000001',
+    'completed',
+    'Evaluate candidate for care operations readiness.',
+    '{"experience":"Five years HHA experience","availability":"Weekend availability","transportation":"Reliable car"}'::jsonb,
+    'Candidate shows strong reliability, clear communication, and strong availability for client care scheduling.',
+    94,
+    92,
+    90,
+    95,
+    array[]::text[],
+    'Strong Candidate',
+    now() - interval '4 hours'
+  ),
+  (
+    '10000000-0000-0000-0000-000000000005',
+    '30000000-0000-0000-0000-000000000001',
+    'blocked',
+    'Evaluate candidate only if knockout criteria pass.',
+    '{"transportation":"No reliable transportation","backgroundCheck":"Declined","availability":"Cannot work weekends or nights"}'::jsonb,
+    'AI screening did not proceed because knockout criteria failed.',
+    20,
+    35,
+    40,
+    15,
+    array['No reliable transportation', 'Background check declined', 'Limited availability'],
+    'Do Not Advance',
+    now() - interval '23 hours'
+  );
+
 delete from applicant_documents
 where applicant_id in (
   '10000000-0000-0000-0000-000000000001',
@@ -515,6 +647,7 @@ values
   ('10000000-0000-0000-0000-000000000001', '20000000-0000-0000-0000-000000000001', 'send_confirmation_sms', 'Send SMS confirmation', 'completed', 3, now() - interval '40 minutes', 1, '{"provider":"twilio_placeholder"}'::jsonb),
   ('10000000-0000-0000-0000-000000000001', '20000000-0000-0000-0000-000000000001', 'parse_resume', 'Parse resume and score experience', 'queued', 2, now(), 0, '{"engine":"openai_placeholder"}'::jsonb),
   ('10000000-0000-0000-0000-000000000001', '20000000-0000-0000-0000-000000000001', 'send_ai_assessment', 'Send AI screening assessment link', 'queued', 3, now() + interval '5 minutes', 0, '{"channel":"sms_email"}'::jsonb),
+  ('10000000-0000-0000-0000-000000000001', '20000000-0000-0000-0000-000000000001', 'evaluate_ai_assessment', 'Evaluate AI screening assessment', 'queued', 4, now() + interval '10 minutes', 0, '{"engine":"openai_placeholder","mode":"structured_candidate_scoring"}'::jsonb),
   ('10000000-0000-0000-0000-000000000002', '20000000-0000-0000-0000-000000000002', 'evaluate_ai_assessment', 'Evaluate AI screening assessment', 'completed', 2, now() - interval '1 hour', 1, '{"score":88}'::jsonb),
   ('10000000-0000-0000-0000-000000000002', '20000000-0000-0000-0000-000000000002', 'verify_license', 'Verify license / guard card', 'running', 1, now() - interval '8 minutes', 1, '{"reviewType":"compliance"}'::jsonb),
   ('10000000-0000-0000-0000-000000000003', '20000000-0000-0000-0000-000000000003', 'request_license_upload', 'Request missing license upload', 'blocked', 1, now() - interval '2 hours', 2, '{"missingDocument":"license"}'::jsonb),

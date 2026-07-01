@@ -3,6 +3,7 @@ import { Link, useParams } from 'react-router-dom'
 import AutomationEventsPanel from '../components/AutomationEventsPanel'
 import AutomationQueuePanel from '../components/AutomationQueuePanel'
 import AiRecommendationPanel from '../components/AiRecommendationPanel'
+import AiScreeningPanel from '../components/AiScreeningPanel'
 import AutomationTimeline from '../components/AutomationTimeline'
 import CandidateScoreCard from '../components/CandidateScoreCard'
 import PageHeader from '../components/PageHeader'
@@ -168,6 +169,10 @@ function ApplicantDetailPage() {
       <div className="mb-6 grid gap-5 xl:grid-cols-[minmax(0,1fr)_minmax(320px,420px)]">
         <CandidateScoreCard applicant={applicant} />
         <AiRecommendationPanel applicant={applicant} />
+      </div>
+
+      <div className="mb-6">
+        <AiScreeningPanel applicant={applicant} />
       </div>
 
       <div className="mb-6">

@@ -89,6 +89,37 @@ create table if not exists ai_recommendations (
   updated_at timestamptz not null default now()
 );
 
+create table if not exists ai_screening_templates (
+  id uuid primary key default gen_random_uuid(),
+  name text not null,
+  role_family text not null,
+  prompt text not null,
+  questions jsonb not null default '[]',
+  scoring_rubric jsonb not null default '{}',
+  status text not null default 'active',
+  created_at timestamptz not null default now(),
+  updated_at timestamptz not null default now()
+);
+
+create table if not exists ai_screening_tasks (
+  id uuid primary key default gen_random_uuid(),
+  applicant_id uuid not null references applicants(id) on delete cascade,
+  template_id uuid references ai_screening_templates(id) on delete set null,
+  task_status text not null default 'queued',
+  prompt_snapshot text,
+  candidate_context jsonb not null default '{}',
+  ai_summary text,
+  role_fit_score integer check (role_fit_score between 0 and 100),
+  professionalism_score integer check (professionalism_score between 0 and 100),
+  communication_score integer check (communication_score between 0 and 100),
+  availability_score integer check (availability_score between 0 and 100),
+  risk_flags text[] not null default '{}',
+  recommendation text,
+  completed_at timestamptz,
+  created_at timestamptz not null default now(),
+  updated_at timestamptz not null default now()
+);
+
 create table if not exists automation_events (
   id uuid primary key default gen_random_uuid(),
   applicant_id uuid references applicants(id) on delete cascade,
@@ -187,6 +218,9 @@ create index if not exists idx_applicant_documents_applicant_id on applicant_doc
 create index if not exists idx_candidate_scores_applicant_id on candidate_scores(applicant_id);
 create unique index if not exists idx_candidate_scores_unique_applicant on candidate_scores(applicant_id);
 create unique index if not exists idx_ai_recommendations_unique_applicant on ai_recommendations(applicant_id);
+create index if not exists idx_ai_screening_templates_role_family on ai_screening_templates(role_family);
+create index if not exists idx_ai_screening_tasks_applicant_id on ai_screening_tasks(applicant_id);
+create index if not exists idx_ai_screening_tasks_status on ai_screening_tasks(task_status);
 create index if not exists idx_automation_events_applicant_id on automation_events(applicant_id);
 create index if not exists idx_workflow_runs_applicant_id on workflow_runs(applicant_id);
 create index if not exists idx_workflow_runs_status on workflow_runs(run_status);
@@ -203,6 +237,8 @@ alter table applicant_documents enable row level security;
 alter table screening_answers enable row level security;
 alter table candidate_scores enable row level security;
 alter table ai_recommendations enable row level security;
+alter table ai_screening_templates enable row level security;
+alter table ai_screening_tasks enable row level security;
 alter table automation_events enable row level security;
 alter table workflow_runs enable row level security;
 alter table automation_jobs enable row level security;
@@ -287,6 +323,38 @@ create policy "Public can read ai recommendations for demo"
 drop policy if exists "Public can create ai recommendations" on ai_recommendations;
 create policy "Public can create ai recommendations"
   on ai_recommendations for insert
+  with check (true);
+
+drop policy if exists "Public can read ai screening templates for demo" on ai_screening_templates;
+create policy "Public can read ai screening templates for demo"
+  on ai_screening_templates for select
+  using (true);
+
+drop policy if exists "Public can create ai screening templates for demo" on ai_screening_templates;
+create policy "Public can create ai screening templates for demo"
+  on ai_screening_templates for insert
+  with check (true);
+
+drop policy if exists "Public can update ai screening templates for demo" on ai_screening_templates;
+create policy "Public can update ai screening templates for demo"
+  on ai_screening_templates for update
+  using (true)
+  with check (true);
+
+drop policy if exists "Public can read ai screening tasks for demo" on ai_screening_tasks;
+create policy "Public can read ai screening tasks for demo"
+  on ai_screening_tasks for select
+  using (true);
+
+drop policy if exists "Public can create ai screening tasks for demo" on ai_screening_tasks;
+create policy "Public can create ai screening tasks for demo"
+  on ai_screening_tasks for insert
+  with check (true);
+
+drop policy if exists "Public can update ai screening tasks for demo" on ai_screening_tasks;
+create policy "Public can update ai screening tasks for demo"
+  on ai_screening_tasks for update
+  using (true)
   with check (true);
 
 drop policy if exists "Public can read automation events for demo" on automation_events;

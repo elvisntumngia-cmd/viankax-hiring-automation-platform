@@ -45,6 +45,7 @@ function processedEventForJob(job: AutomationJob, provider = 'placeholder') {
     send_confirmation_email: ['confirmation_email_sent', 'Confirmation Email Sent', 'Placeholder email confirmation was marked as sent.'],
     parse_resume: ['resume_screened', 'Resume Screened', 'Placeholder resume parsing completed and candidate moved forward.'],
     send_ai_assessment: ['ai_assessment_sent', 'AI Assessment Sent', 'Placeholder AI screening assessment invite was queued for the candidate.'],
+    evaluate_ai_assessment: ['ai_screening_evaluated', 'AI Screening Evaluated', 'Placeholder AI screening evaluation generated structured candidate scores.'],
     verify_license: ['license_verification_completed', 'License Verification Completed', 'Placeholder license verification completed.'],
     send_scheduling_link: ['scheduling_link_sent', 'Scheduling Link Sent', 'Placeholder scheduling link was marked as sent.'],
     voice_interview_analysis: ['voice_interview_analyzed', 'Voice Interview Analyzed', 'Placeholder voice interview analysis completed.'],
@@ -235,6 +236,70 @@ async function applyPlaceholderJobEffects(supabase: ReturnType<typeof createClie
           to_stage: 'Resume Screened',
           changed_by: 'edge_function_processor',
           reason: 'Placeholder resume parsing completed.',
+        }),
+    )
+  }
+
+  if (job.job_type === 'evaluate_ai_assessment') {
+    effects.push(
+      supabase
+        .from('ai_screening_tasks')
+        .update({
+          task_status: 'completed',
+          ai_summary: 'Placeholder AI screening found solid role fit, professional communication, and workable availability. Review risk flags before advancing.',
+          role_fit_score: 84,
+          professionalism_score: 86,
+          communication_score: 82,
+          availability_score: 80,
+          risk_flags: [],
+          recommendation: 'Qualified',
+          completed_at: now,
+          updated_at: now,
+        })
+        .eq('applicant_id', job.applicant_id)
+        .in('task_status', ['queued', 'running']),
+    )
+    effects.push(
+      supabase
+        .from('candidate_scores')
+        .update({
+          screening_score: 84,
+          overall_candidate_score: 86,
+          updated_at: now,
+        })
+        .eq('applicant_id', job.applicant_id),
+    )
+    effects.push(
+      supabase
+        .from('ai_recommendations')
+        .update({
+          recommendation: 'Qualified',
+          confidence: 86,
+          summary: 'Placeholder AI screening indicates the candidate is qualified for HR review, pending compliance and interview steps.',
+          risk_flags: [],
+          updated_at: now,
+        })
+        .eq('applicant_id', job.applicant_id),
+    )
+    effects.push(
+      supabase
+        .from('applicants')
+        .update({
+          current_stage: 'Assessment Completed',
+          status: 'Qualified',
+          updated_at: now,
+        })
+        .eq('id', job.applicant_id),
+    )
+    effects.push(
+      supabase
+        .from('pipeline_stage_history')
+        .insert({
+          applicant_id: job.applicant_id,
+          from_stage: job.applicants?.current_stage ?? null,
+          to_stage: 'Assessment Completed',
+          changed_by: 'edge_function_processor',
+          reason: 'Placeholder AI screening evaluation completed.',
         }),
     )
   }
