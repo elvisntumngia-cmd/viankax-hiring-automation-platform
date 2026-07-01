@@ -1,5 +1,18 @@
 import { isSupabaseConfigured, supabase } from '../lib/supabaseClient'
 
+const pipelineStages = [
+  'New Applicant',
+  'Resume Screened',
+  'Assessment Completed',
+  'License Pending',
+  'License Verified',
+  'Voice Interview Complete',
+  'Interview Scheduled',
+  'Ready for Review',
+  'Hired',
+  'Rejected',
+]
+
 function mapJob(row) {
   return {
     id: row.id,
@@ -350,4 +363,112 @@ export async function submitApplicationToSupabase(application, uploadFiles = {})
   if (writeError) throw writeError
 
   return { ok: true, applicantId }
+}
+
+function getNextPipelineStage(currentStage) {
+  const currentIndex = pipelineStages.indexOf(currentStage)
+  if (currentIndex === -1) return 'Ready for Review'
+  return pipelineStages[Math.min(currentIndex + 1, pipelineStages.length - 1)]
+}
+
+function getDecisionUpdate(applicant, decision) {
+  if (decision === 'Advance') {
+    const nextStage = getNextPipelineStage(applicant.stage)
+    return {
+      nextStage,
+      status: nextStage === 'Hired' ? 'Qualified' : 'Qualified',
+      finalDecision: 'Advance',
+      eventType: 'hr_advanced_candidate',
+      eventLabel: 'HR Advanced Candidate',
+      eventDescription: `HR advanced candidate from ${applicant.stage} to ${nextStage}.`,
+    }
+  }
+
+  if (decision === 'Hold') {
+    return {
+      nextStage: applicant.stage,
+      status: 'Needs Review',
+      finalDecision: 'Hold',
+      eventType: 'hr_placed_candidate_on_hold',
+      eventLabel: 'HR Placed Candidate On Hold',
+      eventDescription: 'HR placed the candidate on hold for additional review.',
+    }
+  }
+
+  return {
+    nextStage: 'Rejected',
+    status: 'Rejected',
+    finalDecision: 'Reject',
+    eventType: 'hr_rejected_candidate',
+    eventLabel: 'HR Rejected Candidate',
+    eventDescription: 'HR rejected the candidate and closed the hiring workflow.',
+  }
+}
+
+export async function updateApplicantDecision(applicant, decision) {
+  if (!isSupabaseConfigured) {
+    throw new Error('Supabase is not configured.')
+  }
+
+  if (!isUuid(applicant.id)) {
+    throw new Error('Only Supabase applicant records can be updated.')
+  }
+
+  const update = getDecisionUpdate(applicant, decision)
+
+  const { error: applicantError } = await supabase
+    .from('applicants')
+    .update({
+      current_stage: update.nextStage,
+      status: update.status,
+      final_decision: update.finalDecision,
+      updated_at: new Date().toISOString(),
+    })
+    .eq('id', applicant.id)
+
+  if (applicantError) throw applicantError
+
+  const historyRow = {
+    applicant_id: applicant.id,
+    from_stage: applicant.stage,
+    to_stage: update.nextStage,
+    changed_by: 'hr_dashboard',
+    reason: update.eventDescription,
+  }
+  const eventRow = {
+    applicant_id: applicant.id,
+    event_type: update.eventType,
+    event_status: 'complete',
+    event_label: update.eventLabel,
+    metadata: {
+      decision: update.finalDecision,
+      fromStage: applicant.stage,
+      toStage: update.nextStage,
+      description: update.eventDescription,
+    },
+  }
+
+  const [{ error: historyError }, { error: eventError }] = await Promise.all([
+    supabase.from('pipeline_stage_history').insert(historyRow),
+    supabase.from('automation_events').insert(eventRow),
+  ])
+
+  if (historyError) throw historyError
+  if (eventError) throw eventError
+
+  return {
+    stage: update.nextStage,
+    status: update.status,
+    decision: update.finalDecision,
+    automationEvents: [
+      {
+        type: eventRow.event_type,
+        status: eventRow.event_status,
+        label: eventRow.event_label,
+        description: eventRow.metadata.description,
+        createdAt: new Date().toISOString(),
+      },
+      ...(applicant.automationEvents ?? []),
+    ],
+  }
 }

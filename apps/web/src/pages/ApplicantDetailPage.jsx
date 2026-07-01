@@ -1,3 +1,4 @@
+import { useState } from 'react'
 import { Link, useParams } from 'react-router-dom'
 import AutomationEventsPanel from '../components/AutomationEventsPanel'
 import AiRecommendationPanel from '../components/AiRecommendationPanel'
@@ -6,7 +7,7 @@ import CandidateScoreCard from '../components/CandidateScoreCard'
 import PageHeader from '../components/PageHeader'
 import { applicants as dummyApplicants } from '../data/dummyApplicants'
 import useSupabaseData from '../hooks/useSupabaseData'
-import { createDocumentSignedUrl, fetchApplicants } from '../services/supabaseData'
+import { createDocumentSignedUrl, fetchApplicants, updateApplicantDecision } from '../services/supabaseData'
 import { getStoredApplications } from '../utils/applicationStorage'
 import { getCandidateScores } from '../utils/candidateInsights'
 
@@ -56,9 +57,34 @@ function getDocumentFile(applicant, documentType) {
 
 function ApplicantDetailPage() {
   const { applicantId } = useParams()
+  const [actionState, setActionState] = useState({ busy: '', message: '', error: '' })
+  const [applicantOverride, setApplicantOverride] = useState(null)
   const { data: backendApplicants, status, error } = useSupabaseData(fetchApplicants, dummyApplicants)
   const applicants = [...getStoredApplications(), ...backendApplicants]
-  const applicant = applicants.find((item) => item.id === applicantId)
+  const selectedApplicant = applicants.find((item) => item.id === applicantId)
+  const applicant = selectedApplicant && applicantOverride?.id === selectedApplicant.id
+    ? { ...selectedApplicant, ...applicantOverride }
+    : selectedApplicant
+
+  async function handleDecision(decision) {
+    setActionState({ busy: decision, message: '', error: '' })
+
+    try {
+      const result = await updateApplicantDecision(applicant, decision)
+      setApplicantOverride({ id: applicant.id, ...result })
+      setActionState({
+        busy: '',
+        message: `${decision} saved. Candidate is now in ${result.stage}.`,
+        error: '',
+      })
+    } catch (decisionError) {
+      setActionState({
+        busy: '',
+        message: '',
+        error: decisionError.message,
+      })
+    }
+  }
 
   if (status === 'loading') {
     return (
@@ -220,14 +246,26 @@ function ApplicantDetailPage() {
 
         <InfoCard title="Notes & decision controls">
           <p>{applicant.notes}</p>
+          {actionState.message ? (
+            <p className="mt-4 rounded-md border border-emerald-400/25 bg-emerald-500/10 p-3 text-sm font-semibold text-emerald-300">
+              {actionState.message}
+            </p>
+          ) : null}
+          {actionState.error ? (
+            <p className="mt-4 rounded-md border border-red-400/25 bg-red-500/10 p-3 text-sm font-semibold text-red-300">
+              {actionState.error}
+            </p>
+          ) : null}
           <div className="mt-4 grid gap-2 sm:grid-cols-3">
             {['Advance', 'Hold', 'Reject'].map((decision) => (
               <button
                 key={decision}
                 type="button"
-                className="rounded-md border border-white/[0.12] bg-white/[0.04] px-3 py-2 font-semibold text-white hover:border-[#0084FF] hover:text-[#0084FF]"
+                disabled={Boolean(actionState.busy)}
+                onClick={() => handleDecision(decision)}
+                className="rounded-md border border-white/[0.12] bg-white/[0.04] px-3 py-2 font-semibold text-white hover:border-[#0084FF] hover:text-[#0084FF] disabled:cursor-wait disabled:opacity-60"
               >
-                {decision}
+                {actionState.busy === decision ? 'Saving...' : decision}
               </button>
             ))}
           </div>

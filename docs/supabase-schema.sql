@@ -175,6 +175,12 @@ create policy "Public can submit applicants"
   on applicants for insert
   with check (true);
 
+drop policy if exists "Public can update applicants for demo" on applicants;
+create policy "Public can update applicants for demo"
+  on applicants for update
+  using (true)
+  with check (true);
+
 drop policy if exists "Public can read screening answers for demo" on screening_answers;
 create policy "Public can read screening answers for demo"
   on screening_answers for select
@@ -229,6 +235,11 @@ drop policy if exists "Public can read pipeline history for demo" on pipeline_st
 create policy "Public can read pipeline history for demo"
   on pipeline_stage_history for select
   using (true);
+
+drop policy if exists "Public can create pipeline history" on pipeline_stage_history;
+create policy "Public can create pipeline history"
+  on pipeline_stage_history for insert
+  with check (true);
 
 drop policy if exists "Public can read voice interviews for demo" on voice_interviews;
 create policy "Public can read voice interviews for demo"
