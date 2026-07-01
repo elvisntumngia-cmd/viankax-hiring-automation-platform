@@ -26,9 +26,14 @@ type AutomationJob = {
 
 type NotificationRow = {
   id: string
+  applicant_id?: string
   recipient: string
   subject: string | null
   message: string
+  metadata?: Record<string, unknown>
+  applicants?: {
+    full_name?: string
+  }
 }
 
 function jsonResponse(body: Record<string, unknown>, status = 200) {
@@ -336,6 +341,69 @@ async function applyPlaceholderJobEffects(supabase: ReturnType<typeof createClie
   if (effectError) throw effectError
 }
 
+async function processOrphanedEmailNotification(supabase: ReturnType<typeof createClient>) {
+  const now = new Date().toISOString()
+  const { data: notifications, error } = await supabase
+    .from('notification_queue')
+    .select('id, applicant_id, recipient, subject, message, metadata, created_at, applicants(full_name)')
+    .eq('channel', 'email')
+    .eq('notification_status', 'queued')
+    .order('created_at', { ascending: true })
+    .limit(1)
+
+  if (error) throw error
+  const notification = notifications?.[0] as NotificationRow | undefined
+
+  if (!notification) {
+    return jsonResponse({ processed: false, message: 'No queued automation jobs or email notifications are ready.' })
+  }
+
+  const emailResult = await sendResendEmail(notification)
+  const { error: notificationError } = await supabase
+    .from('notification_queue')
+    .update({
+      notification_status: 'sent',
+      sent_at: now,
+      provider_message_id: emailResult.providerMessageId,
+      metadata: {
+        ...(notification.metadata ?? {}),
+        provider: emailResult.provider,
+        note: `${emailResult.note} Recovered queued notification without a ready automation job.`,
+      },
+      updated_at: now,
+    })
+    .eq('id', notification.id)
+
+  if (notificationError) throw notificationError
+
+  const { error: eventError } = await supabase
+    .from('automation_events')
+    .insert({
+      applicant_id: notification.applicant_id,
+      event_type: 'orphaned_email_notification_processed',
+      event_status: 'complete',
+      event_label: 'Queued Email Notification Processed',
+      metadata: {
+        notificationId: notification.id,
+        template: notification.metadata?.template ?? 'email_notification',
+        provider: emailResult.provider,
+        description: 'Recovered an email notification that was queued without a ready automation job.',
+      },
+    })
+
+  if (eventError) throw eventError
+
+  return jsonResponse({
+    processed: true,
+    message: `Queued email notification processed for ${notification.applicants?.full_name ?? notification.recipient}.`,
+    notification: {
+      id: notification.id,
+      provider: emailResult.provider,
+      providerMessageId: emailResult.providerMessageId,
+    },
+  })
+}
+
 Deno.serve(async (request) => {
   if (request.method === 'OPTIONS') {
     return new Response('ok', { headers: corsHeaders })
@@ -377,7 +445,7 @@ Deno.serve(async (request) => {
     const job = jobs?.[0] as AutomationJob | undefined
 
     if (!job) {
-      return jsonResponse({ processed: false, message: 'No queued automation jobs are ready.' })
+      return processOrphanedEmailNotification(supabase)
     }
 
     const { error: runningError } = await supabase

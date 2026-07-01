@@ -645,6 +645,7 @@ values
 insert into automation_jobs (applicant_id, workflow_run_id, job_type, job_label, job_status, priority, scheduled_for, attempts, payload)
 values
   ('10000000-0000-0000-0000-000000000001', '20000000-0000-0000-0000-000000000001', 'send_confirmation_sms', 'Send SMS confirmation', 'completed', 3, now() - interval '40 minutes', 1, '{"provider":"twilio_placeholder"}'::jsonb),
+  ('10000000-0000-0000-0000-000000000001', '20000000-0000-0000-0000-000000000001', 'send_confirmation_email', 'Send email confirmation', 'completed', 3, now() - interval '39 minutes', 1, '{"provider":"resend_placeholder"}'::jsonb),
   ('10000000-0000-0000-0000-000000000001', '20000000-0000-0000-0000-000000000001', 'parse_resume', 'Parse resume and score experience', 'queued', 2, now(), 0, '{"engine":"openai_placeholder"}'::jsonb),
   ('10000000-0000-0000-0000-000000000001', '20000000-0000-0000-0000-000000000001', 'send_ai_assessment', 'Send AI screening assessment link', 'queued', 3, now() + interval '5 minutes', 0, '{"channel":"sms_email"}'::jsonb),
   ('10000000-0000-0000-0000-000000000001', '20000000-0000-0000-0000-000000000001', 'evaluate_ai_assessment', 'Evaluate AI screening assessment', 'queued', 4, now() + interval '10 minutes', 0, '{"engine":"openai_placeholder","mode":"structured_candidate_scoring"}'::jsonb),
@@ -670,6 +671,22 @@ select
 from automation_jobs job
 join applicants applicant on applicant.id = job.applicant_id
 where job.job_type = 'send_confirmation_sms';
+
+insert into notification_queue (applicant_id, automation_job_id, channel, recipient, subject, message, notification_status, scheduled_for, sent_at, metadata)
+select
+  job.applicant_id,
+  job.id,
+  'email',
+  applicant.email,
+  'Your application was received',
+  'Your application has been received. The hiring automation workflow will update your status as screening progresses.',
+  case when job.job_status = 'completed' then 'sent' else 'queued' end,
+  job.scheduled_for,
+  case when job.job_status = 'completed' then job.updated_at else null end,
+  '{"template":"application_confirmation"}'::jsonb
+from automation_jobs job
+join applicants applicant on applicant.id = job.applicant_id
+where job.job_type = 'send_confirmation_email';
 
 insert into notification_queue (applicant_id, automation_job_id, channel, recipient, subject, message, notification_status, scheduled_for, sent_at, metadata)
 select

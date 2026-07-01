@@ -769,6 +769,67 @@ async function applyPlaceholderJobEffects(job) {
   if (effectError) throw effectError
 }
 
+async function processOrphanedEmailNotificationLocally() {
+  const { data: notifications, error } = await supabase
+    .from('notification_queue')
+    .select('id, applicant_id, recipient, subject, message, metadata, created_at, applicants(full_name)')
+    .eq('channel', 'email')
+    .eq('notification_status', 'queued')
+    .order('created_at', { ascending: true })
+    .limit(1)
+
+  if (error) throw error
+  const notification = notifications?.[0]
+
+  if (!notification) {
+    return {
+      processed: false,
+      message: 'No queued automation jobs or email notifications are ready to run.',
+    }
+  }
+
+  const now = new Date().toISOString()
+  const template = notification.metadata?.template ?? 'email_notification'
+  const { error: notificationError } = await supabase
+    .from('notification_queue')
+    .update({
+      notification_status: 'sent',
+      sent_at: now,
+      metadata: {
+        ...(notification.metadata ?? {}),
+        provider: 'local_placeholder',
+        note: 'Recovered orphaned queued email notification with local placeholder processor.',
+      },
+      updated_at: now,
+    })
+    .eq('id', notification.id)
+
+  if (notificationError) throw notificationError
+
+  const { error: eventError } = await supabase
+    .from('automation_events')
+    .insert({
+      applicant_id: notification.applicant_id,
+      event_type: 'orphaned_email_notification_processed',
+      event_status: 'complete',
+      event_label: 'Queued Email Notification Processed',
+      metadata: {
+        notificationId: notification.id,
+        template,
+        provider: 'local_placeholder',
+        description: 'Recovered an email notification that was queued without a ready automation job.',
+      },
+    })
+
+  if (eventError) throw eventError
+
+  return {
+    processed: true,
+    source: 'local-fallback',
+    message: `Queued email notification sent for ${notification.applicants?.full_name ?? notification.recipient}.`,
+  }
+}
+
 async function processNextAutomationJobLocally() {
   if (!isSupabaseConfigured) {
     throw new Error('Supabase is not configured.')
@@ -802,10 +863,7 @@ async function processNextAutomationJobLocally() {
 
   const job = jobs?.[0]
   if (!job) {
-    return {
-      processed: false,
-      message: 'No queued automation jobs are ready to run.',
-    }
+    return processOrphanedEmailNotificationLocally()
   }
 
   const now = new Date().toISOString()
@@ -994,12 +1052,17 @@ function automationJobRows(applicantId, workflowRunId, application, uploadedDocu
   ]
 }
 
-function notificationRows(applicantId, application) {
+function findAutomationJobId(jobs, jobType) {
+  return jobs.find((job) => job.job_type === jobType)?.id ?? null
+}
+
+function notificationRows(applicantId, application, automationJobs = []) {
   if (application.knockoutResult === 'Failed') return []
 
   return [
     {
       applicant_id: applicantId,
+      automation_job_id: findAutomationJobId(automationJobs, 'send_confirmation_sms'),
       channel: 'sms',
       recipient: application.phone,
       message: 'Thank you for applying. Your ViankaX application has been received.',
@@ -1008,12 +1071,24 @@ function notificationRows(applicantId, application) {
     },
     {
       applicant_id: applicantId,
+      automation_job_id: findAutomationJobId(automationJobs, 'send_confirmation_email'),
       channel: 'email',
       recipient: application.email,
       subject: 'Your application was received',
       message: 'Your application has been received. The hiring automation workflow will update your status as screening progresses.',
       notification_status: 'queued',
       metadata: { template: 'application_confirmation' },
+    },
+    {
+      applicant_id: applicantId,
+      automation_job_id: findAutomationJobId(automationJobs, 'send_ai_assessment'),
+      channel: 'email',
+      recipient: application.email,
+      subject: 'Complete your ViankaX screening assessment',
+      message: 'Please complete your AI screening assessment so the hiring team can continue reviewing your application.',
+      notification_status: 'queued',
+      scheduled_for: new Date(Date.now() + 5 * 60 * 1000).toISOString(),
+      metadata: { template: 'ai_assessment_invite' },
     },
   ]
 }
@@ -1136,12 +1211,18 @@ export async function submitApplicationToSupabase(application, uploadFiles = {})
     category: 'application',
   }))
 
-  const queuedNotifications = notificationRows(applicantId, application)
+  const { data: automationJobs, error: automationJobsError } = await supabase
+    .from('automation_jobs')
+    .insert(automationJobRows(applicantId, workflowRunId, application, uploadedDocuments))
+    .select('id, job_type')
+
+  if (automationJobsError) throw automationJobsError
+
+  const queuedNotifications = notificationRows(applicantId, application, automationJobs)
   const writeOperations = [
     supabase.from('candidate_scores').insert(scoreRow),
     supabase.from('ai_recommendations').insert(recommendationRow),
     supabase.from('automation_events').insert(automationEventRows),
-    supabase.from('automation_jobs').insert(automationJobRows(applicantId, workflowRunId, application, uploadedDocuments)),
     supabase.from('ai_screening_tasks').insert(aiScreeningTaskRow(applicantId, application)),
     supabase.from('screening_answers').insert(screeningRows),
     supabase.from('applicant_documents').insert(documentRowsFromApplication(applicantId, application, uploadedDocuments)),

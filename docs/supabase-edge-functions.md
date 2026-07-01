@@ -80,6 +80,8 @@ Notes:
 4. If the Edge Function is deployed, it processes the job.
 5. If not deployed, the frontend local fallback processes the job.
 
+If the dashboard says `No queued automation jobs are ready` but `notification_queue` still has queued email rows, redeploy the latest function. The processor now recovers queued email notifications that are missing a ready automation job.
+
 ## Current Function Behavior
 
 The function processes one queued job at a time and still uses placeholder logic:
