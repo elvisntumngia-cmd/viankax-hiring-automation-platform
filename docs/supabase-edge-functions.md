@@ -35,6 +35,7 @@ supabase login --token "your_supabase_access_token"
 Link this repo to the Supabase project:
 
 ```powershell
+cd "C:\Users\elsii\OneDrive\Documents\VX"
 supabase link --project-ref ayoqzgsimmlblwuqdccs
 ```
 
@@ -62,11 +63,13 @@ To send real confirmation emails instead of placeholder sends:
 ```powershell
 supabase secrets set RESEND_API_KEY="your_resend_api_key"
 supabase secrets set RESEND_FROM_EMAIL="ViankaX Hiring <your_verified_sender@yourdomain.com>"
+supabase secrets set RESEND_REPLY_TO="your_reply_to@yourdomain.com"
 ```
 
 Notes:
 
 - The sender must be verified in Resend.
+- `RESEND_REPLY_TO` is optional, but useful when candidates reply.
 - If `RESEND_API_KEY` is missing, the function still completes using placeholder email behavior.
 
 ## Test From Dashboard
@@ -85,9 +88,10 @@ The function processes one queued job at a time and still uses placeholder logic
 - simulates provider work
 - updates notification records where applicable
 - sends real email through Resend only when `RESEND_API_KEY` is configured
+- sends branded HTML and plain-text email content
 - writes automation events
 - updates stage history for resume/license jobs
 - marks job `completed`
 - updates workflow run status
 
-Real Twilio, Resend, OpenAI, Vapi/Bland, and scheduling integrations come later.
+Real Twilio, OpenAI, Vapi/Bland, and scheduling integrations come later. Resend email is ready once the function is deployed and the Resend secrets are set.

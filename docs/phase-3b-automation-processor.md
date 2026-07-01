@@ -31,6 +31,7 @@ Phase 3B makes the automation queue actionable without connecting live providers
 
 - `send_confirmation_email`
   - sends through Resend when `RESEND_API_KEY` is configured
+  - sends branded HTML plus plain-text email content
   - otherwise records a placeholder send
   - marks queued email notification as `sent`
   - writes a confirmation email automation event
