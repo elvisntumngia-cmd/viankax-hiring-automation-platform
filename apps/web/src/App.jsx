@@ -3,31 +3,36 @@ import {
   BriefcaseBusiness,
   ClipboardList,
   Home,
+  ListChecks,
   LayoutDashboard,
   UsersRound,
 } from 'lucide-react'
+import ProtectedRoute from './components/ProtectedRoute'
 import ApplicantDetailPage from './pages/ApplicantDetailPage'
 import ApplicantsPipelinePage from './pages/ApplicantsPipelinePage'
 import ApplicationPage from './pages/ApplicationPage'
 import ApplicationSuccessPage from './pages/ApplicationSuccessPage'
 import ApplicationStatusPage from './pages/ApplicationStatusPage'
+import DashboardJobsPage from './pages/DashboardJobsPage'
 import DashboardPage from './pages/DashboardPage'
 import HomePage from './pages/HomePage'
 import JobDetailsPage from './pages/JobDetailsPage'
 import JobsPage from './pages/JobsPage'
+import LoginPage from './pages/LoginPage'
 
 const navigationLinks = [
   { label: 'Home', to: '/', icon: Home, end: true },
   { label: 'Applicant Portal', to: '/jobs', icon: ClipboardList },
   { label: 'HR Overview', to: '/dashboard', icon: LayoutDashboard, end: true },
   { label: 'Applicants', to: '/dashboard/applicants', icon: UsersRound },
+  { label: 'Jobs', to: '/dashboard/jobs', icon: ListChecks },
 ]
 
 function AppShell({ children }) {
   const location = useLocation()
   const isHome = location.pathname === '/'
   const isDashboard = location.pathname.startsWith('/dashboard')
-  const isDarkShell = isHome || isDashboard
+  const isDarkShell = isHome || isDashboard || location.pathname === '/login'
 
   const sidebarLinkClass = ({ isActive }) =>
     `flex min-w-fit items-center gap-3 rounded-md px-3 py-2 text-sm font-semibold transition ${
@@ -161,12 +166,14 @@ function App() {
         <Route path="/apply/:jobId" element={<ApplicationPage />} />
         <Route path="/success" element={<ApplicationSuccessPage />} />
         <Route path="/status" element={<ApplicationStatusPage />} />
-        <Route path="/dashboard" element={<DashboardPage />} />
-        <Route path="/dashboard/applicants" element={<ApplicantsPipelinePage />} />
+        <Route path="/login" element={<LoginPage />} />
+        <Route path="/dashboard" element={<ProtectedRoute><DashboardPage /></ProtectedRoute>} />
+        <Route path="/dashboard/applicants" element={<ProtectedRoute><ApplicantsPipelinePage /></ProtectedRoute>} />
         <Route
           path="/dashboard/applicants/:applicantId"
-          element={<ApplicantDetailPage />}
+          element={<ProtectedRoute><ApplicantDetailPage /></ProtectedRoute>}
         />
+        <Route path="/dashboard/jobs" element={<ProtectedRoute><DashboardJobsPage /></ProtectedRoute>} />
         <Route path="*" element={<Navigate to="/jobs" replace />} />
       </Routes>
     </AppShell>

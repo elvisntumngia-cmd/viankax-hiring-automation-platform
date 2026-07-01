@@ -1,9 +1,10 @@
-import { Eye, MoreVertical, Search } from 'lucide-react'
+import { CheckCircle2, Eye, PauseCircle, Search, XCircle } from 'lucide-react'
+import { useState } from 'react'
 import { Link, useSearchParams } from 'react-router-dom'
 import PageHeader from '../components/PageHeader'
 import { applicants as dummyApplicants, pipelineStages } from '../data/dummyApplicants'
 import useSupabaseData from '../hooks/useSupabaseData'
-import { fetchApplicants } from '../services/supabaseData'
+import { fetchApplicants, updateApplicantDecision } from '../services/supabaseData'
 import { getStoredApplications } from '../utils/applicationStorage'
 import { formatScore, getCandidateScores, matchesPipelinePreset, pipelineFilterPresets } from '../utils/candidateInsights'
 
@@ -43,10 +44,22 @@ function formatLastUpdated(dateValue) {
   }).format(new Date(dateValue))
 }
 
+function isSupabaseRecord(applicant) {
+  return /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(applicant.id)
+}
+
+function mergeApplicantUpdates(applicant, overrides) {
+  return overrides[applicant.id] ? { ...applicant, ...overrides[applicant.id] } : applicant
+}
+
 function ApplicantsPipelinePage() {
   const [searchParams, setSearchParams] = useSearchParams()
+  const [applicantOverrides, setApplicantOverrides] = useState({})
+  const [actionState, setActionState] = useState({ busyKey: '', message: '', error: '' })
   const { data: backendApplicants, status, error } = useSupabaseData(fetchApplicants, dummyApplicants)
-  const applicants = [...backendApplicants, ...getStoredApplications()]
+  const applicants = [...backendApplicants, ...getStoredApplications()].map((applicant) =>
+    mergeApplicantUpdates(applicant, applicantOverrides),
+  )
   const searchQuery = searchParams.get('q') ?? ''
   const stageFilter = searchParams.get('stage') ?? 'All Stages'
   const presetFilter = searchParams.get('filter') ?? 'all'
@@ -98,6 +111,30 @@ function ApplicantsPipelinePage() {
     setSearchParams({})
   }
 
+  async function handleQuickDecision(applicant, decision) {
+    const busyKey = `${applicant.id}-${decision}`
+    setActionState({ busyKey, message: '', error: '' })
+
+    try {
+      const result = await updateApplicantDecision(applicant, decision)
+      setApplicantOverrides((current) => ({
+        ...current,
+        [applicant.id]: result,
+      }))
+      setActionState({
+        busyKey: '',
+        message: `${decision} saved for ${applicant.name}. Candidate is now in ${result.stage}.`,
+        error: '',
+      })
+    } catch (decisionError) {
+      setActionState({
+        busyKey: '',
+        message: '',
+        error: decisionError.message,
+      })
+    }
+  }
+
   const metricCards = [
     ['New Applicants', applicants.filter((applicant) => applicant.stage === 'New Applicant').length, 'awaiting automation', 'text-fuchsia-300'],
     ['AI Screened', applicants.filter((applicant) => Number.isFinite(getCandidateScores(applicant).screeningScore)).length, 'screening score available', 'text-sky-300'],
@@ -126,6 +163,16 @@ function ApplicantsPipelinePage() {
       {status === 'loading' ? (
         <div className="mb-5 rounded-lg border border-blue-400/30 bg-blue-500/10 p-4 text-sm text-blue-200">
           Loading Supabase applicants...
+        </div>
+      ) : null}
+      {actionState.message ? (
+        <div className="mb-5 rounded-lg border border-emerald-400/30 bg-emerald-500/10 p-4 text-sm font-semibold text-emerald-200">
+          {actionState.message}
+        </div>
+      ) : null}
+      {actionState.error ? (
+        <div className="mb-5 rounded-lg border border-amber-400/30 bg-amber-500/10 p-4 text-sm font-semibold text-amber-200">
+          {actionState.error}
         </div>
       ) : null}
 
@@ -212,6 +259,24 @@ function ApplicantsPipelinePage() {
               >
                 <Eye size={17} /> View applicant
               </Link>
+              <div className="mt-3 grid grid-cols-3 gap-2">
+                {[
+                  ['Advance', CheckCircle2],
+                  ['Hold', PauseCircle],
+                  ['Reject', XCircle],
+                ].map(([decision, Icon]) => (
+                  <button
+                    key={decision}
+                    type="button"
+                    disabled={!isSupabaseRecord(applicant) || Boolean(actionState.busyKey)}
+                    onClick={() => handleQuickDecision(applicant, decision)}
+                    className="inline-flex items-center justify-center gap-1 rounded-md border border-white/[0.10] bg-white/[0.04] px-2 py-2 text-xs font-semibold text-zinc-200 hover:border-[#0084FF] hover:text-[#0084FF] disabled:cursor-not-allowed disabled:opacity-45"
+                  >
+                    <Icon size={14} />
+                    {actionState.busyKey === `${applicant.id}-${decision}` ? 'Saving' : decision}
+                  </button>
+                ))}
+              </div>
             </article>
           ))}
         </div>
@@ -245,13 +310,31 @@ function ApplicantsPipelinePage() {
                   </td>
                   <td className="px-4 py-4 lg:px-5">{formatLastUpdated(applicant.lastUpdatedAt)}</td>
                   <td className="px-4 py-4 lg:px-5">
-                    <div className="flex items-center gap-3 text-zinc-400">
-                      <Link to={`/dashboard/applicants/${applicant.id}`} aria-label={`View ${applicant.name}`}>
+                    <div className="flex items-center gap-2 text-zinc-400">
+                      <Link
+                        to={`/dashboard/applicants/${applicant.id}`}
+                        aria-label={`View ${applicant.name}`}
+                        className="rounded-md border border-white/[0.10] p-2 hover:border-[#0084FF] hover:text-[#0084FF]"
+                      >
                         <Eye size={18} />
                       </Link>
-                      <button type="button" aria-label="More actions">
-                        <MoreVertical size={18} />
-                      </button>
+                      {[
+                        ['Advance', CheckCircle2],
+                        ['Hold', PauseCircle],
+                        ['Reject', XCircle],
+                      ].map(([decision, Icon]) => (
+                        <button
+                          key={decision}
+                          type="button"
+                          title={isSupabaseRecord(applicant) ? decision : 'Supabase record required'}
+                          aria-label={`${decision} ${applicant.name}`}
+                          disabled={!isSupabaseRecord(applicant) || Boolean(actionState.busyKey)}
+                          onClick={() => handleQuickDecision(applicant, decision)}
+                          className="rounded-md border border-white/[0.10] p-2 hover:border-[#0084FF] hover:text-[#0084FF] disabled:cursor-not-allowed disabled:opacity-45"
+                        >
+                          <Icon size={17} />
+                        </button>
+                      ))}
                     </div>
                   </td>
                 </tr>

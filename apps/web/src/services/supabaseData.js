@@ -231,6 +231,64 @@ export async function fetchJobs() {
   return data.map(mapJob)
 }
 
+export async function fetchAllJobs() {
+  if (!isSupabaseConfigured) return []
+
+  const { data, error } = await supabase
+    .from('jobs')
+    .select('*, clients(name)')
+    .order('created_at', { ascending: false })
+
+  if (error) throw error
+  return data.map(mapJob)
+}
+
+export async function fetchClients() {
+  if (!isSupabaseConfigured) return []
+
+  const { data, error } = await supabase
+    .from('clients')
+    .select('id, name, industry, status')
+    .order('name', { ascending: true })
+
+  if (error) throw error
+  return data
+}
+
+function splitList(value) {
+  return String(value ?? '')
+    .split(',')
+    .map((item) => item.trim())
+    .filter(Boolean)
+}
+
+export async function saveJob(job) {
+  if (!isSupabaseConfigured) {
+    throw new Error('Supabase is not configured.')
+  }
+
+  const row = {
+    client_id: job.clientId,
+    title: job.title,
+    location: job.location,
+    pay_range: job.pay,
+    shift_options: splitList(job.shifts),
+    requirements: splitList(job.requirements),
+    license_requirements: splitList(job.licenseRequired),
+    responsibilities: splitList(job.responsibilities),
+    status: job.status,
+    updated_at: new Date().toISOString(),
+  }
+
+  const request = job.id
+    ? supabase.from('jobs').update(row).eq('id', job.id).select('*, clients(name)').single()
+    : supabase.from('jobs').insert(row).select('*, clients(name)').single()
+
+  const { data, error } = await request
+  if (error) throw error
+  return mapJob(data)
+}
+
 export async function fetchApplicants() {
   if (!isSupabaseConfigured) return []
 
@@ -259,6 +317,41 @@ export async function fetchApplicants() {
 
   if (error) throw error
   return data.map(mapApplicant)
+}
+
+export async function lookupApplicationStatus({ email, phone }) {
+  if (!isSupabaseConfigured) return null
+
+  let query = supabase
+    .from('applicants')
+    .select(`
+      *,
+      clients(name),
+      jobs(title, location, clients(name)),
+      applicant_documents(document_type, file_name, storage_bucket, storage_path, status),
+      automation_events(event_type, event_status, event_label, metadata, created_at),
+      pipeline_stage_history(from_stage, to_stage, changed_by, reason, created_at),
+      screening_answers(question, answer),
+      candidate_scores(
+        resume_score,
+        eligibility_score,
+        screening_score,
+        voice_interview_score,
+        overall_candidate_score
+      ),
+      ai_recommendations(recommendation, confidence, summary, risk_flags),
+      voice_interviews(score, transcript, recommendation, status),
+      interview_schedules(scheduled_for, status)
+    `)
+    .order('submitted_at', { ascending: false })
+    .limit(1)
+
+  if (email) query = query.ilike('email', email.trim())
+  if (phone) query = query.eq('phone', phone.trim())
+
+  const { data, error } = await query
+  if (error) throw error
+  return data?.[0] ? mapApplicant(data[0]) : null
 }
 
 export async function createDocumentSignedUrl(document) {

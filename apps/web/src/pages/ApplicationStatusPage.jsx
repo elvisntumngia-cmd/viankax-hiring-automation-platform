@@ -1,36 +1,84 @@
+import { useState } from 'react'
 import { Link } from 'react-router-dom'
 import AutomationTimeline from '../components/AutomationTimeline'
 import PageHeader from '../components/PageHeader'
+import { lookupApplicationStatus } from '../services/supabaseData'
 import { getLastApplication } from '../utils/applicationStorage'
 
 function ApplicationStatusPage() {
-  const application = getLastApplication()
+  const lastApplication = getLastApplication()
+  const [form, setForm] = useState({ email: '', phone: '' })
+  const [application, setApplication] = useState(lastApplication)
+  const [status, setStatus] = useState('idle')
+  const [error, setError] = useState('')
 
-  if (!application) {
-    return (
-      <section className="max-w-3xl">
-        <PageHeader
-          eyebrow="Application status"
-          title="No application found"
-          description="Submit an application first, then return here to view the latest saved status on this device."
-        />
-        <Link
-          to="/jobs"
-          className="inline-flex rounded-md bg-[#0084FF] px-5 py-3 font-semibold text-white"
-        >
-          Browse jobs
-        </Link>
-      </section>
-    )
+  async function searchStatus(event) {
+    event.preventDefault()
+    setStatus('loading')
+    setError('')
+
+    try {
+      const result = await lookupApplicationStatus(form)
+      if (!result) {
+        setApplication(null)
+        setError('No application found for that email and phone combination.')
+      } else {
+        setApplication(result)
+      }
+    } catch (lookupError) {
+      setError(lookupError.message)
+    } finally {
+      setStatus('idle')
+    }
   }
 
   return (
     <section className="max-w-5xl">
       <PageHeader
         eyebrow="Application status"
-        title="Your application progress"
-        description="This is a candidate-facing status view for the latest application saved on this device. Login-based status tracking will come later."
+        title="Check your application progress"
+        description="Look up your latest application status using the contact information submitted with your application."
       />
+
+      <form onSubmit={searchStatus} className="mb-6 rounded-lg border border-[#E5E7EB] bg-white p-5 shadow-sm">
+        <div className="grid gap-4 sm:grid-cols-2">
+          <label className="block">
+            <span className="text-sm font-semibold text-[#111827]">Email</span>
+            <input
+              type="email"
+              value={form.email}
+              onChange={(event) => setForm((current) => ({ ...current, email: event.target.value }))}
+              className="mt-2 w-full rounded-md border border-[#D1D5DB] px-3 py-3 text-[#111827] outline-none focus:border-[#0084FF]"
+              required
+            />
+          </label>
+          <label className="block">
+            <span className="text-sm font-semibold text-[#111827]">Phone</span>
+            <input
+              type="tel"
+              value={form.phone}
+              onChange={(event) => setForm((current) => ({ ...current, phone: event.target.value }))}
+              className="mt-2 w-full rounded-md border border-[#D1D5DB] px-3 py-3 text-[#111827] outline-none focus:border-[#0084FF]"
+              required
+            />
+          </label>
+        </div>
+        {error ? <p className="mt-4 rounded-md border border-amber-200 bg-amber-50 p-3 text-sm font-semibold text-amber-800">{error}</p> : null}
+        <button type="submit" disabled={status === 'loading'} className="mt-5 rounded-md bg-[#0084FF] px-5 py-3 font-semibold text-white disabled:cursor-wait disabled:opacity-70">
+          {status === 'loading' ? 'Searching...' : 'Check status'}
+        </button>
+      </form>
+
+      {!application ? (
+        <div className="rounded-lg border border-[#E5E7EB] bg-white p-5 shadow-sm">
+          <h2 className="text-lg font-semibold text-[#111827]">No application selected</h2>
+          <p className="mt-2 text-sm text-[#6B7280]">Search above or submit an application first.</p>
+          <Link to="/jobs" className="mt-4 inline-flex rounded-md bg-[#0084FF] px-5 py-3 font-semibold text-white">
+            Browse jobs
+          </Link>
+        </div>
+      ) : (
+        <>
 
       <div className="grid gap-5 lg:grid-cols-[360px_minmax(0,1fr)]">
         <aside className="rounded-lg border border-[#E5E7EB] bg-white p-5 shadow-sm">
@@ -74,6 +122,8 @@ function ApplicationStatusPage() {
           Back to confirmation
         </Link>
       </div>
+        </>
+      )}
     </section>
   )
 }

@@ -156,9 +156,21 @@ alter table voice_interviews enable row level security;
 alter table interview_schedules enable row level security;
 
 drop policy if exists "Public can read open jobs" on jobs;
-create policy "Public can read open jobs"
+drop policy if exists "Public can read jobs for demo" on jobs;
+create policy "Public can read jobs for demo"
   on jobs for select
-  using (status = 'open');
+  using (true);
+
+drop policy if exists "Public can create jobs for demo" on jobs;
+create policy "Public can create jobs for demo"
+  on jobs for insert
+  with check (true);
+
+drop policy if exists "Public can update jobs for demo" on jobs;
+create policy "Public can update jobs for demo"
+  on jobs for update
+  using (true)
+  with check (true);
 
 drop policy if exists "Public can read clients for demo" on clients;
 create policy "Public can read clients for demo"
