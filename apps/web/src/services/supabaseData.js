@@ -48,6 +48,7 @@ function safeFileName(fileName) {
 
 async function uploadApplicationDocuments(applicantId, uploadFiles = {}) {
   const uploadedDocuments = {}
+  const failedUploads = {}
 
   for (const definition of documentDefinitions) {
     const file = uploadFiles[definition.key]
@@ -58,7 +59,10 @@ async function uploadApplicationDocuments(applicantId, uploadFiles = {}) {
         .from(definition.bucket)
         .upload(storagePath, file, { upsert: true })
 
-      if (error) throw error
+      if (error) {
+        failedUploads[definition.statusKey] = error.message
+        continue
+      }
 
       uploadedDocuments[definition.statusKey] = {
         fileName: file.name,
@@ -69,17 +73,19 @@ async function uploadApplicationDocuments(applicantId, uploadFiles = {}) {
     }
   }
 
-  return uploadedDocuments
+  return { uploadedDocuments, failedUploads }
 }
 
-function documentRowsFromApplication(applicantId, application, uploadedDocuments = {}) {
+function documentRowsFromApplication(applicantId, application, uploadedDocuments = {}, failedUploads = {}) {
   return documentDefinitions.map((definition) => ({
     applicant_id: applicantId,
     document_type: definition.documentType,
     file_name: uploadedDocuments[definition.statusKey]?.fileName ?? null,
     storage_bucket: uploadedDocuments[definition.statusKey]?.storageBucket ?? definition.bucket,
     storage_path: uploadedDocuments[definition.statusKey]?.storagePath ?? null,
-    status: uploadedDocuments[definition.statusKey]?.status ?? application.documents?.[definition.statusKey] ?? 'Not Uploaded',
+    status: failedUploads[definition.statusKey]
+      ? 'Upload Failed'
+      : uploadedDocuments[definition.statusKey]?.status ?? application.documents?.[definition.statusKey] ?? 'Not Uploaded',
   }))
 }
 
@@ -976,6 +982,10 @@ async function createWorkflowRun(applicantId, application) {
 }
 
 function automationJobRows(applicantId, workflowRunId, application, uploadedDocuments) {
+  const now = new Date()
+  const scheduledNow = now.toISOString()
+  const scheduledInFiveMinutes = new Date(now.getTime() + 5 * 60 * 1000).toISOString()
+
   if (application.knockoutResult === 'Failed') {
     return [
       {
@@ -985,6 +995,7 @@ function automationJobRows(applicantId, workflowRunId, application, uploadedDocu
         job_label: 'Stop workflow after failed knockout',
         job_status: 'completed',
         priority: 1,
+        scheduled_for: scheduledNow,
         payload: {
           reason: 'knockout_failed',
           flags: application.knockoutFlags ?? [],
@@ -1001,6 +1012,7 @@ function automationJobRows(applicantId, workflowRunId, application, uploadedDocu
       job_label: 'Send SMS confirmation',
       job_status: 'queued',
       priority: 2,
+      scheduled_for: scheduledNow,
       payload: { channel: 'sms', provider: 'twilio_placeholder' },
     },
     {
@@ -1010,6 +1022,7 @@ function automationJobRows(applicantId, workflowRunId, application, uploadedDocu
       job_label: 'Send email confirmation',
       job_status: 'queued',
       priority: 2,
+      scheduled_for: scheduledNow,
       payload: { channel: 'email', provider: 'resend_placeholder' },
     },
     {
@@ -1019,6 +1032,7 @@ function automationJobRows(applicantId, workflowRunId, application, uploadedDocu
       job_label: 'Parse resume and score experience',
       job_status: uploadedDocuments.resume ? 'queued' : 'blocked',
       priority: 3,
+      scheduled_for: scheduledNow,
       payload: { engine: 'openai_placeholder', resumeUploaded: Boolean(uploadedDocuments.resume) },
     },
     {
@@ -1028,6 +1042,7 @@ function automationJobRows(applicantId, workflowRunId, application, uploadedDocu
       job_label: 'Send AI screening assessment link',
       job_status: 'queued',
       priority: 4,
+      scheduled_for: scheduledInFiveMinutes,
       payload: { channel: 'sms_email' },
     },
     {
@@ -1037,7 +1052,7 @@ function automationJobRows(applicantId, workflowRunId, application, uploadedDocu
       job_label: 'Evaluate AI screening assessment',
       job_status: 'queued',
       priority: 5,
-      scheduled_for: new Date(Date.now() + 10 * 60 * 1000).toISOString(),
+      scheduled_for: scheduledNow,
       payload: { engine: 'openai_placeholder', mode: 'structured_candidate_scoring' },
     },
     {
@@ -1047,6 +1062,7 @@ function automationJobRows(applicantId, workflowRunId, application, uploadedDocu
       job_label: 'Verify license / guard card',
       job_status: uploadedDocuments.guardCard ? 'queued' : 'blocked',
       priority: 3,
+      scheduled_for: scheduledNow,
       payload: { licenseUploaded: Boolean(uploadedDocuments.guardCard) },
     },
   ]
@@ -1059,6 +1075,9 @@ function findAutomationJobId(jobs, jobType) {
 function notificationRows(applicantId, application, automationJobs = []) {
   if (application.knockoutResult === 'Failed') return []
 
+  const scheduledNow = new Date().toISOString()
+  const aiAssessmentScheduledFor = new Date(Date.now() + 5 * 60 * 1000).toISOString()
+
   return [
     {
       applicant_id: applicantId,
@@ -1067,6 +1086,7 @@ function notificationRows(applicantId, application, automationJobs = []) {
       recipient: application.phone,
       message: 'Thank you for applying. Your ViankaX application has been received.',
       notification_status: 'queued',
+      scheduled_for: scheduledNow,
       metadata: { template: 'application_confirmation' },
     },
     {
@@ -1077,6 +1097,7 @@ function notificationRows(applicantId, application, automationJobs = []) {
       subject: 'Your application was received',
       message: 'Your application has been received. The hiring automation workflow will update your status as screening progresses.',
       notification_status: 'queued',
+      scheduled_for: scheduledNow,
       metadata: { template: 'application_confirmation' },
     },
     {
@@ -1087,7 +1108,7 @@ function notificationRows(applicantId, application, automationJobs = []) {
       subject: 'Complete your ViankaX screening assessment',
       message: 'Please complete your AI screening assessment so the hiring team can continue reviewing your application.',
       notification_status: 'queued',
-      scheduled_for: new Date(Date.now() + 5 * 60 * 1000).toISOString(),
+      scheduled_for: aiAssessmentScheduledFor,
       metadata: { template: 'ai_assessment_invite' },
     },
   ]
@@ -1111,6 +1132,44 @@ function aiScreeningTaskRow(applicantId, application) {
     recommendation: application.knockoutResult === 'Failed' ? 'Do Not Advance' : null,
     completed_at: application.knockoutResult === 'Failed' ? new Date().toISOString() : null,
   }
+}
+
+function notificationKey(notification) {
+  return `${notification.channel}:${notification.metadata?.template ?? notification.subject ?? notification.message}`
+}
+
+async function createAutomationJobs(applicantId, workflowRunId, application, uploadedDocuments) {
+  const { data, error } = await supabase
+    .from('automation_jobs')
+    .insert(automationJobRows(applicantId, workflowRunId, application, uploadedDocuments))
+    .select('id, job_type')
+
+  if (error) throw error
+  return data ?? []
+}
+
+async function ensureQueuedNotifications(applicantId, application, automationJobs) {
+  const expectedNotifications = notificationRows(applicantId, application, automationJobs)
+  if (!expectedNotifications.length) return []
+
+  const { data: existingNotifications, error: existingError } = await supabase
+    .from('notification_queue')
+    .select('channel, subject, message, metadata')
+    .eq('applicant_id', applicantId)
+
+  if (existingError) throw existingError
+
+  const existingKeys = new Set((existingNotifications ?? []).map(notificationKey))
+  const missingNotifications = expectedNotifications.filter((notification) => !existingKeys.has(notificationKey(notification)))
+
+  if (!missingNotifications.length) return expectedNotifications
+
+  const { error: insertError } = await supabase
+    .from('notification_queue')
+    .insert(missingNotifications)
+
+  if (insertError) throw insertError
+  return expectedNotifications
 }
 
 export async function submitApplicationToSupabase(application, uploadFiles = {}) {
@@ -1143,7 +1202,8 @@ export async function submitApplicationToSupabase(application, uploadFiles = {})
   if (applicantError) throw applicantError
 
   const applicantId = applicant.id
-  const uploadedDocuments = await uploadApplicationDocuments(applicantId, uploadFiles)
+  const { uploadedDocuments, failedUploads } = await uploadApplicationDocuments(applicantId, uploadFiles)
+  const failedUploadCount = Object.keys(failedUploads).length
   const workflowRunId = await createWorkflowRun(applicantId, application)
   const scoreRow = {
     applicant_id: applicantId,
@@ -1180,7 +1240,11 @@ export async function submitApplicationToSupabase(application, uploadFiles = {})
       event_label: 'Documents Uploaded',
       metadata: {
         uploadedCount: Object.keys(uploadedDocuments).length,
-        description: Object.keys(uploadedDocuments).length
+        failedUploadCount,
+        failedUploads,
+        description: failedUploadCount
+          ? 'One or more document uploads failed, but the applicant workflow was still queued.'
+          : Object.keys(uploadedDocuments).length
           ? 'Applicant documents were uploaded to Supabase Storage.'
           : 'Document upload records were created, but no file objects were attached.',
       },
@@ -1211,32 +1275,29 @@ export async function submitApplicationToSupabase(application, uploadFiles = {})
     category: 'application',
   }))
 
-  const { data: automationJobs, error: automationJobsError } = await supabase
-    .from('automation_jobs')
-    .insert(automationJobRows(applicantId, workflowRunId, application, uploadedDocuments))
-    .select('id, job_type')
+  const automationJobs = await createAutomationJobs(applicantId, workflowRunId, application, uploadedDocuments)
+  await ensureQueuedNotifications(applicantId, application, automationJobs)
 
-  if (automationJobsError) throw automationJobsError
-
-  const queuedNotifications = notificationRows(applicantId, application, automationJobs)
   const writeOperations = [
     supabase.from('candidate_scores').insert(scoreRow),
     supabase.from('ai_recommendations').insert(recommendationRow),
     supabase.from('automation_events').insert(automationEventRows),
     supabase.from('ai_screening_tasks').insert(aiScreeningTaskRow(applicantId, application)),
     supabase.from('screening_answers').insert(screeningRows),
-    supabase.from('applicant_documents').insert(documentRowsFromApplication(applicantId, application, uploadedDocuments)),
+    supabase.from('applicant_documents').insert(documentRowsFromApplication(applicantId, application, uploadedDocuments, failedUploads)),
   ]
-
-  if (queuedNotifications.length) {
-    writeOperations.push(supabase.from('notification_queue').insert(queuedNotifications))
-  }
 
   const results = await Promise.all(writeOperations)
   const writeError = results.find((result) => result.error)?.error
   if (writeError) throw writeError
 
-  return { ok: true, applicantId }
+  return {
+    ok: true,
+    applicantId,
+    warning: failedUploadCount
+      ? 'Application was saved and automation was queued, but one or more document uploads failed.'
+      : null,
+  }
 }
 
 function getNextPipelineStage(currentStage) {

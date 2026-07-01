@@ -405,7 +405,7 @@ function ApplicationPage() {
       const result = await submitApplicationToSupabase(payload, uploadFiles)
 
       if (result.ok) {
-        saveLastApplication({ ...payload, id: result.applicantId, syncedToSupabase: true })
+        saveLastApplication({ ...payload, id: result.applicantId, syncedToSupabase: true, syncWarning: result.warning ?? null })
       } else {
         saveSubmittedApplication({ ...payload, syncedToSupabase: false })
       }
@@ -414,7 +414,6 @@ function ApplicationPage() {
     } catch (error) {
       saveSubmittedApplication({ ...payload, syncedToSupabase: false })
       setSubmitError(`Supabase submission failed, so the application was saved locally. ${error.message}`)
-      navigate('/success')
     } finally {
       setIsSubmitting(false)
     }
