@@ -1,10 +1,12 @@
 import { NavLink, Navigate, Route, Routes, useLocation } from 'react-router-dom'
 import {
   BriefcaseBusiness,
+  CalendarClock,
   ClipboardList,
   Home,
   ListChecks,
   LayoutDashboard,
+  MapPinned,
   UsersRound,
 } from 'lucide-react'
 import ProtectedRoute from './components/ProtectedRoute'
@@ -19,6 +21,8 @@ import HomePage from './pages/HomePage'
 import JobDetailsPage from './pages/JobDetailsPage'
 import JobsPage from './pages/JobsPage'
 import LoginPage from './pages/LoginPage'
+import OpenShiftsPage from './pages/OpenShiftsPage'
+import SitesPage from './pages/SitesPage'
 
 const navigationLinks = [
   { label: 'Home', to: '/', icon: Home, end: true },
@@ -26,6 +30,8 @@ const navigationLinks = [
   { label: 'HR Overview', to: '/dashboard', icon: LayoutDashboard, end: true },
   { label: 'Applicants', to: '/dashboard/applicants', icon: UsersRound },
   { label: 'Jobs', to: '/dashboard/jobs', icon: ListChecks },
+  { label: 'Sites', to: '/dashboard/sites', icon: MapPinned },
+  { label: 'Open Shifts', to: '/dashboard/shifts', icon: CalendarClock },
 ]
 
 function AppShell({ children }) {
@@ -174,6 +180,8 @@ function App() {
           element={<ProtectedRoute><ApplicantDetailPage /></ProtectedRoute>}
         />
         <Route path="/dashboard/jobs" element={<ProtectedRoute><DashboardJobsPage /></ProtectedRoute>} />
+        <Route path="/dashboard/sites" element={<ProtectedRoute><SitesPage /></ProtectedRoute>} />
+        <Route path="/dashboard/shifts" element={<ProtectedRoute><OpenShiftsPage /></ProtectedRoute>} />
         <Route path="*" element={<Navigate to="/jobs" replace />} />
       </Routes>
     </AppShell>

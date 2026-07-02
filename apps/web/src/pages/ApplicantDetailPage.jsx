@@ -7,8 +7,10 @@ import AiScreeningPanel from '../components/AiScreeningPanel'
 import AutomationTimeline from '../components/AutomationTimeline'
 import CandidateScoreCard from '../components/CandidateScoreCard'
 import PageHeader from '../components/PageHeader'
+import PlacementRecommendationPanel from '../components/PlacementRecommendationPanel'
 import StageHistoryPanel from '../components/StageHistoryPanel'
 import { applicants as dummyApplicants } from '../data/dummyApplicants'
+import { getPlacementRecommendation } from '../data/dummySites'
 import useSupabaseData from '../hooks/useSupabaseData'
 import { createDocumentSignedUrl, fetchApplicants, updateApplicantDecision } from '../services/supabaseData'
 import { getStoredApplications } from '../utils/applicationStorage'
@@ -127,6 +129,7 @@ function ApplicantDetailPage() {
 
   const scores = getCandidateScores(applicant)
   const canUpdateDecision = isSupabaseRecord(applicant)
+  const placementRecommendation = getPlacementRecommendation(applicant)
 
   return (
     <section>
@@ -173,6 +176,10 @@ function ApplicantDetailPage() {
 
       <div className="mb-6">
         <AiScreeningPanel applicant={applicant} />
+      </div>
+
+      <div className="mb-6">
+        <PlacementRecommendationPanel applicant={applicant} />
       </div>
 
       <div className="mb-6">
@@ -236,6 +243,14 @@ function ApplicantDetailPage() {
           <DetailRow label="Email" value={applicant.email} />
           <DetailRow label="Applied" value={applicant.appliedAt} />
           <DetailRow label="Job applied for" value={applicant.role} />
+        </InfoCard>
+
+        <InfoCard title="Placement context">
+          <DetailRow label="Linked site" value={placementRecommendation.bestSite?.siteName ?? 'Not linked yet'} />
+          <DetailRow label="Open shift" value={placementRecommendation.bestShift?.shiftTitle ?? 'Not linked yet'} />
+          <DetailRow label="Required license" value={placementRecommendation.bestShift?.requiredLicenseType ?? 'Pending'} />
+          <DetailRow label="Shift type" value={placementRecommendation.bestShift?.shiftType ?? 'Pending'} />
+          <DetailRow label="Employment type" value={placementRecommendation.bestShift?.employmentType ?? 'Pending'} />
         </InfoCard>
 
         <InfoCard title="Documents">

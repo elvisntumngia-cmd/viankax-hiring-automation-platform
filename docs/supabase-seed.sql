@@ -8,9 +8,218 @@ on conflict (id) do update set
   status = excluded.status,
   updated_at = now();
 
+insert into job_sites (
+  id,
+  client_id,
+  site_name,
+  client_customer_name,
+  location,
+  address,
+  city,
+  state,
+  required_license_type,
+  required_traits,
+  preferred_traits,
+  site_notes,
+  status
+)
+values
+  (
+    '40000000-0000-0000-0000-000000000001',
+    '11111111-1111-1111-1111-111111111111',
+    'Northgate Mall',
+    'Northgate Retail Group',
+    'Atlanta, GA',
+    '4100 Northgate Parkway',
+    'Atlanta',
+    'GA',
+    'SO',
+    array['customer-facing', 'professional communication', 'incident reporting'],
+    array['retail security', 'de-escalation', 'evening availability'],
+    'High-traffic retail post with public interaction and clear reporting expectations.',
+    'Active'
+  ),
+  (
+    '40000000-0000-0000-0000-000000000002',
+    '11111111-1111-1111-1111-111111111111',
+    'Madison Luxury Residences',
+    'Madison Property Group',
+    'Atlanta, GA',
+    '880 Madison Avenue',
+    'Atlanta',
+    'GA',
+    'SO',
+    array['customer-facing', 'professional communication', 'incident reporting'],
+    array['concierge experience', 'day shift availability', 'professional tone'],
+    'Premium residential lobby post. Communication and presentation matter.',
+    'Active'
+  ),
+  (
+    '40000000-0000-0000-0000-000000000003',
+    '11111111-1111-1111-1111-111111111111',
+    'Eastside Warehouse Patrol',
+    'Eastside Logistics',
+    'Atlanta, GA',
+    '1290 Fulton Industrial Blvd',
+    'Atlanta',
+    'GA',
+    'SO',
+    array['patrol experience', 'overnight availability', 'outdoor tolerance'],
+    array['warehouse security', 'incident reporting', 'reliable transportation'],
+    'Large perimeter patrol site with overnight coverage needs.',
+    'Active'
+  ),
+  (
+    '40000000-0000-0000-0000-000000000004',
+    '11111111-1111-1111-1111-111111111111',
+    'Downtown Bank Post',
+    'Piedmont Bank',
+    'Charlotte, NC',
+    '75 Trade Street',
+    'Charlotte',
+    'NC',
+    'Armed',
+    array['armed experience', 'professional communication', 'incident reporting'],
+    array['bank post experience', 'supervisor experience', 'day shift availability'],
+    'Armed client-facing bank post with strict compliance requirements.',
+    'Active'
+  ),
+  (
+    '40000000-0000-0000-0000-000000000005',
+    '11111111-1111-1111-1111-111111111111',
+    'Construction Site Patrol',
+    'Beacon Builders',
+    'Atlanta, GA',
+    '520 Memorial Drive',
+    'Atlanta',
+    'GA',
+    'SO',
+    array['outdoor tolerance', 'patrol experience', 'overnight availability'],
+    array['construction site experience', 'reliable transportation', 'incident reporting'],
+    'Outdoor night patrol post with equipment and perimeter checks.',
+    'Active'
+  )
+on conflict (id) do update set
+  site_name = excluded.site_name,
+  client_customer_name = excluded.client_customer_name,
+  location = excluded.location,
+  address = excluded.address,
+  city = excluded.city,
+  state = excluded.state,
+  required_license_type = excluded.required_license_type,
+  required_traits = excluded.required_traits,
+  preferred_traits = excluded.preferred_traits,
+  site_notes = excluded.site_notes,
+  status = excluded.status,
+  updated_at = now();
+
+insert into open_shifts (
+  id,
+  site_id,
+  shift_title,
+  shift_type,
+  employment_type,
+  days_needed,
+  start_time,
+  end_time,
+  open_positions,
+  required_license_type,
+  minimum_experience,
+  required_traits,
+  preferred_traits,
+  urgency,
+  status
+)
+values
+  (
+    '50000000-0000-0000-0000-000000000001',
+    '40000000-0000-0000-0000-000000000001',
+    'Retail Security Officer - Evening',
+    'Evening',
+    'Part-time',
+    array['Thursday', 'Friday', 'Saturday', 'Sunday'],
+    '4:00 PM',
+    '12:00 AM',
+    2,
+    'SO',
+    '1 year security or public-facing experience',
+    array['customer-facing', 'professional communication', 'incident reporting'],
+    array['retail security', 'de-escalation'],
+    'Urgent',
+    'Open'
+  ),
+  (
+    '50000000-0000-0000-0000-000000000002',
+    '40000000-0000-0000-0000-000000000002',
+    'Residential Lobby Officer - Day',
+    'Day',
+    'Full-time',
+    array['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday'],
+    '7:00 AM',
+    '3:00 PM',
+    1,
+    'SO',
+    '2 years customer-facing security preferred',
+    array['customer-facing', 'professional communication', 'incident reporting'],
+    array['concierge experience', 'day shift availability'],
+    'Normal',
+    'Open'
+  ),
+  (
+    '50000000-0000-0000-0000-000000000003',
+    '40000000-0000-0000-0000-000000000003',
+    'Warehouse Patrol Officer - Overnight',
+    'Overnight',
+    'Full-time',
+    array['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday'],
+    '11:00 PM',
+    '7:00 AM',
+    2,
+    'SO',
+    '1 year patrol experience preferred',
+    array['patrol experience', 'overnight availability', 'outdoor tolerance'],
+    array['warehouse security', 'incident reporting'],
+    'Critical',
+    'Open'
+  ),
+  (
+    '50000000-0000-0000-0000-000000000004',
+    '40000000-0000-0000-0000-000000000004',
+    'Armed Bank Officer - Day',
+    'Day',
+    'Full-time',
+    array['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday'],
+    '8:00 AM',
+    '5:00 PM',
+    1,
+    'Armed',
+    '3 years armed security or military/law enforcement',
+    array['armed experience', 'professional communication', 'incident reporting'],
+    array['bank post experience', 'supervisor experience'],
+    'Urgent',
+    'Open'
+  )
+on conflict (id) do update set
+  shift_title = excluded.shift_title,
+  shift_type = excluded.shift_type,
+  employment_type = excluded.employment_type,
+  days_needed = excluded.days_needed,
+  start_time = excluded.start_time,
+  end_time = excluded.end_time,
+  open_positions = excluded.open_positions,
+  required_license_type = excluded.required_license_type,
+  minimum_experience = excluded.minimum_experience,
+  required_traits = excluded.required_traits,
+  preferred_traits = excluded.preferred_traits,
+  urgency = excluded.urgency,
+  status = excluded.status,
+  updated_at = now();
+
 insert into jobs (
   id,
   client_id,
+  site_id,
+  open_shift_id,
   title,
   location,
   pay_range,
@@ -18,12 +227,16 @@ insert into jobs (
   requirements,
   license_requirements,
   responsibilities,
-  status
+  status,
+  public_apply_slug,
+  public_apply_url
 )
 values
   (
     'aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa',
     '11111111-1111-1111-1111-111111111111',
+    '40000000-0000-0000-0000-000000000001',
+    '50000000-0000-0000-0000-000000000001',
     'Security Officer',
     'Atlanta, GA',
     '$18 - $22/hr',
@@ -41,11 +254,15 @@ values
       'Write clear incident reports when needed',
       'Communicate professionally with visitors and staff'
     ],
-    'open'
+    'open',
+    'security-officer-atlanta',
+    '/apply/aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa'
   ),
   (
     'bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbbbb',
     '11111111-1111-1111-1111-111111111111',
+    '40000000-0000-0000-0000-000000000004',
+    '50000000-0000-0000-0000-000000000004',
     'Armed Security Officer',
     'Charlotte, NC',
     '$24 - $30/hr',
@@ -63,11 +280,15 @@ values
       'Complete daily activity and incident reports',
       'Coordinate with supervisors and emergency contacts'
     ],
-    'open'
+    'open',
+    'armed-security-charlotte',
+    '/apply/bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbbbb'
   ),
   (
     'cccccccc-cccc-cccc-cccc-cccccccccccc',
     '22222222-2222-2222-2222-222222222222',
+    null,
+    null,
     'Home Health Aide',
     'Tampa, FL',
     '$17 - $21/hr',
@@ -85,9 +306,13 @@ values
       'Communicate changes to care coordinators',
       'Arrive reliably for assigned shifts'
     ],
-    'open'
+    'open',
+    'home-health-aide-tampa',
+    '/apply/cccccccc-cccc-cccc-cccc-cccccccccccc'
   )
 on conflict (id) do update set
+  site_id = excluded.site_id,
+  open_shift_id = excluded.open_shift_id,
   title = excluded.title,
   location = excluded.location,
   pay_range = excluded.pay_range,
@@ -95,6 +320,8 @@ on conflict (id) do update set
   requirements = excluded.requirements,
   license_requirements = excluded.license_requirements,
   responsibilities = excluded.responsibilities,
+  public_apply_slug = excluded.public_apply_slug,
+  public_apply_url = excluded.public_apply_url,
   status = excluded.status,
   updated_at = now();
 
@@ -211,6 +438,21 @@ on conflict (id) do update set
   notes = excluded.notes,
   updated_at = now();
 
+update applicants
+set
+  site_id = jobs.site_id,
+  open_shift_id = jobs.open_shift_id,
+  updated_at = now()
+from jobs
+where applicants.job_id = jobs.id
+  and applicants.id in (
+    '10000000-0000-0000-0000-000000000001',
+    '10000000-0000-0000-0000-000000000002',
+    '10000000-0000-0000-0000-000000000003',
+    '10000000-0000-0000-0000-000000000004',
+    '10000000-0000-0000-0000-000000000005'
+  );
+
 insert into candidate_scores (
   applicant_id,
   resume_score,
@@ -276,6 +518,60 @@ on conflict (applicant_id) do update set
   summary = excluded.summary,
   risk_flags = excluded.risk_flags,
   updated_at = now();
+
+delete from placement_matches
+where applicant_id in (
+  '10000000-0000-0000-0000-000000000001',
+  '10000000-0000-0000-0000-000000000002',
+  '10000000-0000-0000-0000-000000000003',
+  '10000000-0000-0000-0000-000000000004'
+);
+
+insert into placement_matches (
+  applicant_id,
+  site_id,
+  open_shift_id,
+  job_id,
+  match_score,
+  recommendation_reason,
+  strengths,
+  concerns,
+  match_status
+)
+values
+  (
+    '10000000-0000-0000-0000-000000000001',
+    '40000000-0000-0000-0000-000000000001',
+    '50000000-0000-0000-0000-000000000001',
+    'aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa',
+    86,
+    'Entry-level access control experience, evening availability, and public-facing comfort fit the retail evening post while license review completes.',
+    array['customer-facing', 'evening availability', 'access control experience'],
+    array['License still needs review', 'Resume score is still developing'],
+    'Recommended'
+  ),
+  (
+    '10000000-0000-0000-0000-000000000002',
+    '40000000-0000-0000-0000-000000000002',
+    '50000000-0000-0000-0000-000000000002',
+    'aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa',
+    94,
+    'Strong communication, verified SO documentation, commercial property experience, and professional presentation fit a premium residential lobby post.',
+    array['professional communication', 'customer-facing', 'incident reporting', 'verified license'],
+    array['Confirm day shift preference before assignment'],
+    'Recommended'
+  ),
+  (
+    '10000000-0000-0000-0000-000000000003',
+    '40000000-0000-0000-0000-000000000004',
+    '50000000-0000-0000-0000-000000000004',
+    'bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbbbb',
+    84,
+    'Armed security background and patrol experience fit the bank post, but assignment should wait until license documentation is uploaded and verified.',
+    array['armed experience', 'patrol experience', 'incident reporting'],
+    array['License upload missing', 'Compliance hold blocks assignment'],
+    'Recommended'
+  );
 
 insert into ai_screening_templates (id, name, role_family, prompt, questions, scoring_rubric, status)
 values

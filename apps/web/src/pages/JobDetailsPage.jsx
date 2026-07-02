@@ -1,6 +1,7 @@
 import { Link, useParams } from 'react-router-dom'
 import PageHeader from '../components/PageHeader'
 import { jobs } from '../data/dummyJobs'
+import { getJobSiteContext } from '../data/dummySites'
 import useSupabaseData from '../hooks/useSupabaseData'
 import { fetchJobs } from '../services/supabaseData'
 
@@ -27,6 +28,7 @@ function JobDetailsPage() {
   const { jobId } = useParams()
   const { data: availableJobs, status, error } = useSupabaseData(fetchJobs, jobs)
   const job = availableJobs.find((item) => item.id === jobId) ?? availableJobs[0]
+  const { site, shift } = getJobSiteContext(job)
 
   return (
     <section>
@@ -55,6 +57,28 @@ function JobDetailsPage() {
         <aside className="h-fit rounded-lg border border-[#E5E7EB] bg-white p-4 shadow-sm sm:p-6">
           <h2 className="text-lg font-semibold text-[#111827]">Apply now</h2>
           <div className="mt-4 space-y-3 text-sm leading-6 text-[#6B7280]">
+            {site ? (
+              <p>
+                <span className="font-semibold text-[#111827]">Site:</span>{' '}
+                {site.siteName}
+              </p>
+            ) : null}
+            {shift ? (
+              <>
+                <p>
+                  <span className="font-semibold text-[#111827]">Open shift:</span>{' '}
+                  {shift.shiftTitle}
+                </p>
+                <p>
+                  <span className="font-semibold text-[#111827]">Schedule:</span>{' '}
+                  {shift.daysNeeded.join(', ')} · {shift.startTime} - {shift.endTime}
+                </p>
+                <p>
+                  <span className="font-semibold text-[#111827]">Employment:</span>{' '}
+                  {shift.employmentType}
+                </p>
+              </>
+            ) : null}
             <p>
               <span className="font-semibold text-[#111827]">Shift options:</span>{' '}
               {job.shifts.join(', ')}

@@ -9,9 +9,49 @@ create table if not exists clients (
   updated_at timestamptz not null default now()
 );
 
+create table if not exists job_sites (
+  id uuid primary key default gen_random_uuid(),
+  client_id uuid references clients(id) on delete set null,
+  site_name text not null,
+  client_customer_name text,
+  location text not null,
+  address text,
+  city text,
+  state text,
+  required_license_type text not null default 'SO',
+  required_traits text[] not null default '{}',
+  preferred_traits text[] not null default '{}',
+  site_notes text,
+  status text not null default 'Active',
+  created_at timestamptz not null default now(),
+  updated_at timestamptz not null default now()
+);
+
+create table if not exists open_shifts (
+  id uuid primary key default gen_random_uuid(),
+  site_id uuid not null references job_sites(id) on delete cascade,
+  shift_title text not null,
+  shift_type text not null,
+  employment_type text not null,
+  days_needed text[] not null default '{}',
+  start_time text,
+  end_time text,
+  open_positions integer not null default 1,
+  required_license_type text not null default 'SO',
+  minimum_experience text,
+  required_traits text[] not null default '{}',
+  preferred_traits text[] not null default '{}',
+  urgency text not null default 'Normal',
+  status text not null default 'Open',
+  created_at timestamptz not null default now(),
+  updated_at timestamptz not null default now()
+);
+
 create table if not exists jobs (
   id uuid primary key default gen_random_uuid(),
   client_id uuid references clients(id) on delete cascade,
+  site_id uuid references job_sites(id) on delete set null,
+  open_shift_id uuid references open_shifts(id) on delete set null,
   title text not null,
   location text not null,
   pay_range text,
@@ -24,10 +64,17 @@ create table if not exists jobs (
   updated_at timestamptz not null default now()
 );
 
+alter table jobs add column if not exists site_id uuid references job_sites(id) on delete set null;
+alter table jobs add column if not exists open_shift_id uuid references open_shifts(id) on delete set null;
+alter table jobs add column if not exists public_apply_slug text;
+alter table jobs add column if not exists public_apply_url text;
+
 create table if not exists applicants (
   id uuid primary key default gen_random_uuid(),
   client_id uuid references clients(id) on delete set null,
   job_id uuid references jobs(id) on delete set null,
+  site_id uuid references job_sites(id) on delete set null,
+  open_shift_id uuid references open_shifts(id) on delete set null,
   full_name text not null,
   email text not null,
   phone text not null,
@@ -88,6 +135,9 @@ create table if not exists ai_recommendations (
   created_at timestamptz not null default now(),
   updated_at timestamptz not null default now()
 );
+
+alter table applicants add column if not exists site_id uuid references job_sites(id) on delete set null;
+alter table applicants add column if not exists open_shift_id uuid references open_shifts(id) on delete set null;
 
 create table if not exists ai_screening_templates (
   id uuid primary key default gen_random_uuid(),
@@ -211,8 +261,31 @@ create table if not exists interview_schedules (
   updated_at timestamptz not null default now()
 );
 
+create table if not exists placement_matches (
+  id uuid primary key default gen_random_uuid(),
+  applicant_id uuid not null references applicants(id) on delete cascade,
+  site_id uuid references job_sites(id) on delete set null,
+  open_shift_id uuid references open_shifts(id) on delete set null,
+  job_id uuid references jobs(id) on delete set null,
+  match_score integer check (match_score between 0 and 100),
+  recommendation_reason text,
+  strengths text[] not null default '{}',
+  concerns text[] not null default '{}',
+  match_status text not null default 'Recommended',
+  created_at timestamptz not null default now(),
+  updated_at timestamptz not null default now()
+);
+
 create index if not exists idx_jobs_client_id on jobs(client_id);
+create index if not exists idx_job_sites_client_id on job_sites(client_id);
+create index if not exists idx_job_sites_status on job_sites(status);
+create index if not exists idx_open_shifts_site_id on open_shifts(site_id);
+create index if not exists idx_open_shifts_status on open_shifts(status);
+create index if not exists idx_jobs_site_id on jobs(site_id);
+create index if not exists idx_jobs_open_shift_id on jobs(open_shift_id);
 create index if not exists idx_applicants_job_id on applicants(job_id);
+create index if not exists idx_applicants_site_id on applicants(site_id);
+create index if not exists idx_applicants_open_shift_id on applicants(open_shift_id);
 create index if not exists idx_applicants_current_stage on applicants(current_stage);
 create index if not exists idx_applicant_documents_applicant_id on applicant_documents(applicant_id);
 create index if not exists idx_candidate_scores_applicant_id on candidate_scores(applicant_id);
@@ -229,8 +302,12 @@ create index if not exists idx_automation_jobs_status on automation_jobs(job_sta
 create index if not exists idx_notification_queue_applicant_id on notification_queue(applicant_id);
 create index if not exists idx_notification_queue_status on notification_queue(notification_status);
 create index if not exists idx_pipeline_stage_history_applicant_id on pipeline_stage_history(applicant_id);
+create index if not exists idx_placement_matches_applicant_id on placement_matches(applicant_id);
+create index if not exists idx_placement_matches_open_shift_id on placement_matches(open_shift_id);
 
 alter table clients enable row level security;
+alter table job_sites enable row level security;
+alter table open_shifts enable row level security;
 alter table jobs enable row level security;
 alter table applicants enable row level security;
 alter table applicant_documents enable row level security;
@@ -246,6 +323,7 @@ alter table notification_queue enable row level security;
 alter table pipeline_stage_history enable row level security;
 alter table voice_interviews enable row level security;
 alter table interview_schedules enable row level security;
+alter table placement_matches enable row level security;
 
 drop policy if exists "Public can read open jobs" on jobs;
 drop policy if exists "Public can read jobs for demo" on jobs;
@@ -268,6 +346,38 @@ drop policy if exists "Public can read clients for demo" on clients;
 create policy "Public can read clients for demo"
   on clients for select
   using (true);
+
+drop policy if exists "Public can read job sites for demo" on job_sites;
+create policy "Public can read job sites for demo"
+  on job_sites for select
+  using (true);
+
+drop policy if exists "Public can create job sites for demo" on job_sites;
+create policy "Public can create job sites for demo"
+  on job_sites for insert
+  with check (true);
+
+drop policy if exists "Public can update job sites for demo" on job_sites;
+create policy "Public can update job sites for demo"
+  on job_sites for update
+  using (true)
+  with check (true);
+
+drop policy if exists "Public can read open shifts for demo" on open_shifts;
+create policy "Public can read open shifts for demo"
+  on open_shifts for select
+  using (true);
+
+drop policy if exists "Public can create open shifts for demo" on open_shifts;
+create policy "Public can create open shifts for demo"
+  on open_shifts for insert
+  with check (true);
+
+drop policy if exists "Public can update open shifts for demo" on open_shifts;
+create policy "Public can update open shifts for demo"
+  on open_shifts for update
+  using (true)
+  with check (true);
 
 drop policy if exists "Public can read applicants for demo" on applicants;
 create policy "Public can read applicants for demo"
@@ -434,3 +544,19 @@ drop policy if exists "Public can read interview schedules for demo" on intervie
 create policy "Public can read interview schedules for demo"
   on interview_schedules for select
   using (true);
+
+drop policy if exists "Public can read placement matches for demo" on placement_matches;
+create policy "Public can read placement matches for demo"
+  on placement_matches for select
+  using (true);
+
+drop policy if exists "Public can create placement matches for demo" on placement_matches;
+create policy "Public can create placement matches for demo"
+  on placement_matches for insert
+  with check (true);
+
+drop policy if exists "Public can update placement matches for demo" on placement_matches;
+create policy "Public can update placement matches for demo"
+  on placement_matches for update
+  using (true)
+  with check (true);

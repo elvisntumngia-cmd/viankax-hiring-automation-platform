@@ -17,6 +17,8 @@ function mapJob(row) {
   return {
     id: row.id,
     clientId: row.client_id,
+    siteId: row.site_id ?? null,
+    openShiftId: row.open_shift_id ?? null,
     title: row.title,
     client: row.clients?.name ?? 'ViankaX Client',
     location: row.location,
@@ -26,6 +28,46 @@ function mapJob(row) {
     licenseRequired: row.license_requirements?.[0] ?? 'License requirements pending',
     requirements: row.requirements ?? [],
     responsibilities: row.responsibilities ?? [],
+  }
+}
+
+function mapJobSite(row) {
+  return {
+    id: row.id,
+    clientId: row.client_id,
+    siteName: row.site_name,
+    clientCustomerName: row.client_customer_name,
+    location: row.location,
+    address: row.address,
+    city: row.city,
+    state: row.state,
+    requiredLicenseType: row.required_license_type,
+    requiredTraits: row.required_traits ?? [],
+    preferredTraits: row.preferred_traits ?? [],
+    siteNotes: row.site_notes,
+    status: row.status,
+    openShiftsCount: row.open_shifts?.length ?? 0,
+  }
+}
+
+function mapOpenShift(row) {
+  return {
+    id: row.id,
+    siteId: row.site_id,
+    shiftTitle: row.shift_title,
+    siteName: row.job_sites?.site_name ?? 'Site pending',
+    shiftType: row.shift_type,
+    employmentType: row.employment_type,
+    daysNeeded: row.days_needed ?? [],
+    startTime: row.start_time,
+    endTime: row.end_time,
+    openPositions: row.open_positions,
+    requiredLicenseType: row.required_license_type,
+    minimumExperience: row.minimum_experience,
+    requiredTraits: row.required_traits ?? [],
+    preferredTraits: row.preferred_traits ?? [],
+    urgency: row.urgency,
+    status: row.status,
   }
 }
 
@@ -365,11 +407,97 @@ export async function fetchClients() {
   return data
 }
 
+export async function fetchJobSites() {
+  if (!isSupabaseConfigured) return []
+
+  const { data, error } = await supabase
+    .from('job_sites')
+    .select('*, open_shifts(id)')
+    .order('site_name', { ascending: true })
+
+  if (error) throw error
+  return data.map(mapJobSite)
+}
+
+export async function fetchOpenShifts() {
+  if (!isSupabaseConfigured) return []
+
+  const { data, error } = await supabase
+    .from('open_shifts')
+    .select('*, job_sites(site_name)')
+    .order('created_at', { ascending: false })
+
+  if (error) throw error
+  return data.map(mapOpenShift)
+}
+
 function splitList(value) {
   return String(value ?? '')
     .split(',')
     .map((item) => item.trim())
     .filter(Boolean)
+}
+
+export async function saveJobSite(site) {
+  if (!isSupabaseConfigured) {
+    throw new Error('Supabase is not configured.')
+  }
+
+  const row = {
+    client_id: site.clientId || null,
+    site_name: site.siteName,
+    client_customer_name: site.clientCustomerName,
+    location: site.location,
+    address: site.address,
+    city: site.city,
+    state: site.state,
+    required_license_type: site.requiredLicenseType,
+    required_traits: splitList(site.requiredTraits),
+    preferred_traits: splitList(site.preferredTraits),
+    site_notes: site.siteNotes,
+    status: site.status,
+    updated_at: new Date().toISOString(),
+  }
+
+  const request = site.id
+    ? supabase.from('job_sites').update(row).eq('id', site.id).select('*, open_shifts(id)').single()
+    : supabase.from('job_sites').insert(row).select('*, open_shifts(id)').single()
+
+  const { data, error } = await request
+  if (error) throw error
+  return mapJobSite(data)
+}
+
+export async function saveOpenShift(shift) {
+  if (!isSupabaseConfigured) {
+    throw new Error('Supabase is not configured.')
+  }
+
+  const row = {
+    site_id: shift.siteId,
+    shift_title: shift.shiftTitle,
+    shift_type: shift.shiftType,
+    employment_type: shift.employmentType,
+    days_needed: splitList(shift.daysNeeded),
+    start_time: shift.startTime,
+    end_time: shift.endTime,
+    open_positions: Number(shift.openPositions) || 1,
+    required_license_type: shift.requiredLicenseType,
+    minimum_experience: shift.minimumExperience,
+    required_traits: splitList(shift.requiredTraits),
+    preferred_traits: splitList(shift.preferredTraits),
+    urgency: shift.urgency,
+    status: shift.status,
+    updated_at: new Date().toISOString(),
+  }
+
+  const request = shift.id
+    ? supabase.from('open_shifts').update(row).eq('id', shift.id).select('*, job_sites(site_name)').single()
+    : supabase.from('open_shifts').insert(row).select('*, job_sites(site_name)').single()
+
+  const { data, error } = await request
+  if (error) throw error
+  return mapOpenShift(data)
 }
 
 export async function saveJob(job) {

@@ -1,5 +1,6 @@
 import { useState } from 'react'
 import PageHeader from '../components/PageHeader'
+import { getJobSiteContext } from '../data/dummySites'
 import useSupabaseData from '../hooks/useSupabaseData'
 import { fetchAllJobs, fetchClients, saveJob } from '../services/supabaseData'
 
@@ -135,18 +136,7 @@ function DashboardJobsPage() {
           <h2 className="text-lg font-semibold text-white">Managed jobs</h2>
           <div className="mt-4 grid gap-3">
             {managedJobs.map((job) => (
-              <article key={job.id} className="rounded-md border border-white/[0.08] bg-white/[0.04] p-4">
-                <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
-                  <div>
-                    <p className="font-semibold text-white">{job.title}</p>
-                    <p className="mt-1 text-sm text-zinc-400">{job.client} | {job.location}</p>
-                    <p className="mt-1 text-sm text-zinc-500">{job.pay}</p>
-                  </div>
-                  <button type="button" onClick={() => setForm(jobToForm(job))} className="w-fit rounded-md border border-white/[0.12] px-3 py-2 text-sm font-semibold text-white hover:border-[#0084FF] hover:text-[#0084FF]">
-                    Edit
-                  </button>
-                </div>
-              </article>
+              <JobRow key={job.id} job={job} onEdit={() => setForm(jobToForm(job))} />
             ))}
             {!managedJobs.length ? (
               <p className="rounded-md border border-white/[0.08] bg-white/[0.04] p-4 text-sm text-zinc-400">No jobs found.</p>
@@ -155,6 +145,39 @@ function DashboardJobsPage() {
         </div>
       </div>
     </section>
+  )
+}
+
+function JobRow({ job, onEdit }) {
+  const { site, shift } = getJobSiteContext(job)
+
+  return (
+    <article className="rounded-md border border-white/[0.08] bg-white/[0.04] p-4">
+      <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+        <div>
+          <p className="font-semibold text-white">{job.title}</p>
+          <p className="mt-1 text-sm text-zinc-400">{job.client} | {job.location}</p>
+          <p className="mt-1 text-sm text-zinc-500">{job.pay}</p>
+        </div>
+        <button type="button" onClick={onEdit} className="w-fit rounded-md border border-white/[0.12] px-3 py-2 text-sm font-semibold text-white hover:border-[#0084FF] hover:text-[#0084FF]">
+          Edit
+        </button>
+      </div>
+      <div className="mt-4 grid gap-3 sm:grid-cols-3">
+        <div className="rounded-md border border-white/[0.08] bg-[#080D14] p-3">
+          <p className="text-xs font-semibold uppercase text-zinc-500">Linked site</p>
+          <p className="mt-2 text-sm font-semibold text-white">{site?.siteName ?? 'Not linked yet'}</p>
+        </div>
+        <div className="rounded-md border border-white/[0.08] bg-[#080D14] p-3">
+          <p className="text-xs font-semibold uppercase text-zinc-500">Open shift</p>
+          <p className="mt-2 text-sm font-semibold text-white">{shift?.shiftTitle ?? 'Not linked yet'}</p>
+        </div>
+        <div className="rounded-md border border-white/[0.08] bg-[#080D14] p-3">
+          <p className="text-xs font-semibold uppercase text-zinc-500">Apply link</p>
+          <p className="mt-2 break-all text-sm font-semibold text-white">/apply/{job.id}</p>
+        </div>
+      </div>
+    </article>
   )
 }
 
