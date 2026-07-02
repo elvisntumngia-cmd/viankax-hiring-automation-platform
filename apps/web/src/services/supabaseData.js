@@ -24,6 +24,8 @@ function mapJob(row) {
     location: row.location,
     type: row.status === 'open' ? 'Open role' : row.status,
     pay: row.pay_range ?? 'Pay range pending',
+    publicApplySlug: row.public_apply_slug ?? null,
+    publicApplyUrl: row.public_apply_url ?? null,
     shifts: row.shift_options ?? [],
     licenseRequired: row.license_requirements?.[0] ?? 'License requirements pending',
     requirements: row.requirements ?? [],
@@ -507,6 +509,8 @@ export async function saveJob(job) {
 
   const row = {
     client_id: job.clientId,
+    site_id: job.siteId || null,
+    open_shift_id: job.openShiftId || null,
     title: job.title,
     location: job.location,
     pay_range: job.pay,
@@ -514,6 +518,8 @@ export async function saveJob(job) {
     requirements: splitList(job.requirements),
     license_requirements: splitList(job.licenseRequired),
     responsibilities: splitList(job.responsibilities),
+    public_apply_slug: job.publicApplySlug || null,
+    public_apply_url: job.publicApplyUrl || (job.id ? `/apply/${job.id}` : null),
     status: job.status,
     updated_at: new Date().toISOString(),
   }
@@ -1310,6 +1316,8 @@ export async function submitApplicationToSupabase(application, uploadFiles = {})
     .insert({
       client_id: isUuid(application.clientId) ? application.clientId : null,
       job_id: isUuid(application.jobId) ? application.jobId : null,
+      site_id: isUuid(application.siteId) ? application.siteId : null,
+      open_shift_id: isUuid(application.openShiftId) ? application.openShiftId : null,
       full_name: application.name,
       email: application.email,
       phone: application.phone,

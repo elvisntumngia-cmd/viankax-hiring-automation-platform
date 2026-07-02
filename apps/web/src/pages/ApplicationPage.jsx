@@ -343,6 +343,8 @@ function ApplicationPage() {
       jobTitle: job.title,
       jobId: job.id,
       clientId: job.clientId,
+      siteId: job.siteId,
+      openShiftId: job.openShiftId,
       client: job.client,
       location: job.location,
       stage: 'New Applicant',

@@ -2,11 +2,13 @@ import { useState } from 'react'
 import PageHeader from '../components/PageHeader'
 import { getJobSiteContext } from '../data/dummySites'
 import useSupabaseData from '../hooks/useSupabaseData'
-import { fetchAllJobs, fetchClients, saveJob } from '../services/supabaseData'
+import { fetchAllJobs, fetchClients, fetchJobSites, fetchOpenShifts, saveJob } from '../services/supabaseData'
 
 const blankJob = {
   id: '',
   clientId: '',
+  siteId: '',
+  openShiftId: '',
   title: '',
   location: '',
   pay: '',
@@ -14,6 +16,8 @@ const blankJob = {
   licenseRequired: '',
   requirements: '',
   responsibilities: '',
+  publicApplySlug: '',
+  publicApplyUrl: '',
   status: 'open',
 }
 
@@ -21,6 +25,8 @@ function jobToForm(job) {
   return {
     id: job.id,
     clientId: job.clientId ?? '',
+    siteId: job.siteId ?? '',
+    openShiftId: job.openShiftId ?? '',
     title: job.title,
     location: job.location,
     pay: job.pay,
@@ -28,6 +34,8 @@ function jobToForm(job) {
     licenseRequired: job.licenseRequired ?? '',
     requirements: job.requirements?.join(', ') ?? '',
     responsibilities: job.responsibilities?.join(', ') ?? '',
+    publicApplySlug: job.publicApplySlug ?? '',
+    publicApplyUrl: job.publicApplyUrl ?? `/apply/${job.id}`,
     status: job.type === 'Open role' ? 'open' : job.type,
   }
 }
@@ -35,6 +43,8 @@ function jobToForm(job) {
 function DashboardJobsPage() {
   const { data: jobs, status, error } = useSupabaseData(fetchAllJobs, [])
   const { data: clients } = useSupabaseData(fetchClients, [])
+  const { data: sites } = useSupabaseData(fetchJobSites, [])
+  const { data: shifts } = useSupabaseData(fetchOpenShifts, [])
   const [savedJobs, setSavedJobs] = useState([])
   const [form, setForm] = useState(blankJob)
   const [message, setMessage] = useState('')
@@ -47,6 +57,26 @@ function DashboardJobsPage() {
 
   function setField(key, value) {
     setForm((current) => ({ ...current, [key]: value }))
+  }
+
+  function applyShift(shiftId) {
+    const shift = shifts.find((item) => item.id === shiftId)
+    const site = shift ? sites.find((item) => item.id === shift.siteId) : null
+
+    setForm((current) => ({
+      ...current,
+      openShiftId: shiftId,
+      siteId: shift?.siteId ?? current.siteId,
+      title: current.title || shift?.shiftTitle || '',
+      location: current.location || site?.location || '',
+      shifts: current.shifts || shift?.shiftType || '',
+      licenseRequired: current.licenseRequired || shift?.requiredLicenseType || '',
+      requirements: current.requirements || [
+        shift?.minimumExperience,
+        ...(shift?.requiredTraits ?? []),
+      ].filter(Boolean).join(', '),
+      publicApplySlug: current.publicApplySlug || shift?.shiftTitle?.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/(^-|-$)/g, '') || '',
+    }))
   }
 
   async function submitJob(event) {
@@ -96,6 +126,25 @@ function DashboardJobsPage() {
                 {clients.map((client) => <option key={client.id} value={client.id}>{client.name}</option>)}
               </select>
             </label>
+            <label className="block">
+              <span className="text-sm font-semibold text-white">Linked site</span>
+              <select value={form.siteId} onChange={(event) => setField('siteId', event.target.value)} className="mt-2 w-full rounded-md border border-white/[0.10] bg-[#080D14] px-3 py-3 text-white outline-none focus:border-[#0084FF]">
+                <option value="">Not linked</option>
+                {sites.map((site) => <option key={site.id} value={site.id}>{site.siteName}</option>)}
+              </select>
+            </label>
+            <label className="block">
+              <span className="text-sm font-semibold text-white">Create from open shift</span>
+              <select value={form.openShiftId} onChange={(event) => applyShift(event.target.value)} className="mt-2 w-full rounded-md border border-white/[0.10] bg-[#080D14] px-3 py-3 text-white outline-none focus:border-[#0084FF]">
+                <option value="">Not linked</option>
+                {shifts
+                  .filter((shift) => !form.siteId || shift.siteId === form.siteId)
+                  .map((shift) => <option key={shift.id} value={shift.id}>{shift.shiftTitle} - {shift.siteName}</option>)}
+              </select>
+              <p className="mt-2 text-xs leading-5 text-zinc-500">
+                Selecting a shift links this public job posting to the staffing need and can prefill the posting fields.
+              </p>
+            </label>
             {[
               ['title', 'Job title'],
               ['location', 'Location'],
@@ -104,6 +153,8 @@ function DashboardJobsPage() {
               ['licenseRequired', 'License requirements, comma separated'],
               ['requirements', 'Requirements, comma separated'],
               ['responsibilities', 'Responsibilities, comma separated'],
+              ['publicApplySlug', 'Public apply slug'],
+              ['publicApplyUrl', 'Public apply URL'],
             ].map(([key, label]) => (
               <label key={key} className="block">
                 <span className="text-sm font-semibold text-white">{label}</span>
