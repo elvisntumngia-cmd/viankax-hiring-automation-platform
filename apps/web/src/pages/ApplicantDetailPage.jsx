@@ -64,6 +64,81 @@ function isSupabaseRecord(applicant) {
   return /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(applicant.id)
 }
 
+const screeningAnswerSections = [
+  {
+    title: 'Eligibility',
+    questions: [
+      'Are you authorized to work in the United States?',
+      'Are you willing to undergo a background check?',
+      'Do you currently hold a valid security license or guard card?',
+      'What type of license do you currently hold?',
+    ],
+  },
+  {
+    title: 'Availability',
+    questions: [
+      'Which shift types are you available for?',
+      'Which days are you available?',
+      'Are you available for weekends, holidays, or overtime if needed?',
+      'When can you start?',
+    ],
+  },
+  {
+    title: 'Transportation & Commute',
+    questions: [
+      'Do you have reliable transportation?',
+      'What is the maximum commute distance you are comfortable with?',
+    ],
+  },
+  {
+    title: 'Experience',
+    questions: [
+      'How many years of security experience do you have?',
+      'What security environments have you worked in before?',
+      'Have you supervised a team before?',
+      'Do you have incident reporting experience?',
+      'Are you comfortable using mobile apps or digital reporting tools while on duty?',
+    ],
+  },
+  {
+    title: 'Physical & Site Readiness',
+    questions: [
+      'Are you comfortable standing or walking for long periods?',
+      'Are you comfortable working outdoors if required?',
+      'Are you comfortable working alone at a site if assigned?',
+    ],
+  },
+  {
+    title: 'Short Written Responses',
+    questions: [
+      'Why are you interested in this security role?',
+      'What type of security work do you prefer and why?',
+      'What makes you a reliable candidate for this role?',
+    ],
+  },
+]
+
+function groupScreeningAnswers(screeningAnswers = []) {
+  const answerMap = new Map(screeningAnswers)
+  const grouped = screeningAnswerSections
+    .map((section) => ({
+      ...section,
+      answers: section.questions
+        .filter((question) => answerMap.has(question))
+        .map((question) => [question, answerMap.get(question)]),
+    }))
+    .filter((section) => section.answers.length)
+
+  const knownQuestions = new Set(screeningAnswerSections.flatMap((section) => section.questions))
+  const otherAnswers = screeningAnswers.filter(([question]) => !knownQuestions.has(question))
+
+  if (otherAnswers.length) {
+    grouped.push({ title: 'Application Form Answers', answers: otherAnswers })
+  }
+
+  return grouped.length ? grouped : [{ title: 'Screening', answers: [['Screening', 'No screening answers recorded yet.']] }]
+}
+
 function ApplicantDetailPage() {
   const { applicantId } = useParams()
   const [actionState, setActionState] = useState({ busy: '', message: '', error: '' })
@@ -130,6 +205,7 @@ function ApplicantDetailPage() {
   const scores = getCandidateScores(applicant)
   const canUpdateDecision = isSupabaseRecord(applicant)
   const placementRecommendation = getPlacementRecommendation(applicant)
+  const groupedScreeningAnswers = groupScreeningAnswers(applicant.screeningAnswers)
 
   return (
     <section>
@@ -293,11 +369,18 @@ function ApplicantDetailPage() {
         </InfoCard>
 
         <InfoCard title="Screening answers">
-          <div className="space-y-3">
-            {applicant.screeningAnswers.map(([question, answer]) => (
-              <div key={question} className="rounded-md bg-white/[0.04] p-3">
-                <p className="font-semibold text-white">{question}</p>
-                <p className="mt-1">{answer}</p>
+          <div className="space-y-4">
+            {groupedScreeningAnswers.map((section) => (
+              <div key={section.title} className="rounded-md border border-white/[0.08] bg-white/[0.03] p-3">
+                <p className="font-semibold text-white">{section.title}</p>
+                <div className="mt-3 space-y-3">
+                  {section.answers.map(([question, answer]) => (
+                    <div key={question} className="rounded-md bg-white/[0.04] p-3">
+                      <p className="font-semibold text-zinc-100">{question}</p>
+                      <p className="mt-1 text-zinc-300">{answer}</p>
+                    </div>
+                  ))}
+                </div>
               </div>
             ))}
           </div>

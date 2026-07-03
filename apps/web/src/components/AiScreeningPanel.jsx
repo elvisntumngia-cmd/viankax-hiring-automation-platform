@@ -12,11 +12,17 @@ function scoreValue(value) {
 
 function AiScreeningPanel({ applicant }) {
   const screening = applicant.aiScreening ?? {}
+  const categoryScores = screening.candidateContext?.categoryScores ?? {}
+  const strengths = screening.candidateContext?.strengths ?? []
+  const concerns = screening.candidateContext?.concerns ?? screening.riskFlags ?? []
+  const suggestedNextStep = screening.candidateContext?.suggestedNextStep ?? 'Pending AI screening'
   const scores = [
-    ['Role fit', screening.roleFitScore],
-    ['Professionalism', screening.professionalismScore],
+    ['Eligibility', categoryScores.eligibility],
+    ['Availability', categoryScores.availability ?? screening.availabilityScore],
+    ['Transportation', categoryScores.transportation],
+    ['Experience', categoryScores.experience ?? screening.roleFitScore],
+    ['Site readiness', categoryScores.siteReadiness ?? screening.professionalismScore],
     ['Communication', screening.communicationScore],
-    ['Availability', screening.availabilityScore],
   ]
 
   return (
@@ -31,7 +37,7 @@ function AiScreeningPanel({ applicant }) {
         </span>
       </div>
 
-      <div className="mt-5 grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
+      <div className="mt-5 grid gap-3 sm:grid-cols-2 xl:grid-cols-3">
         {scores.map(([label, value]) => (
           <div key={label} className="rounded-md border border-white/[0.08] bg-white/[0.04] p-3">
             <p className="text-xs font-semibold uppercase tracking-wide text-zinc-500">{label}</p>
@@ -53,9 +59,22 @@ function AiScreeningPanel({ applicant }) {
           <p className="mt-2 font-semibold text-white">{screening.recommendation ?? 'Pending AI Screening'}</p>
         </div>
         <div className="rounded-md border border-white/[0.08] bg-white/[0.04] p-4">
-          <p className="text-sm font-semibold text-zinc-500">Risk flags</p>
-          <p className="mt-2 font-semibold text-white">
-            {screening.riskFlags?.length ? screening.riskFlags.join(', ') : 'None recorded'}
+          <p className="text-sm font-semibold text-zinc-500">Suggested next step</p>
+          <p className="mt-2 font-semibold text-white">{suggestedNextStep}</p>
+        </div>
+      </div>
+
+      <div className="mt-4 grid gap-3 md:grid-cols-2">
+        <div className="rounded-md border border-emerald-400/20 bg-emerald-500/10 p-4">
+          <p className="text-sm font-semibold text-emerald-200">Strengths</p>
+          <p className="mt-2 text-sm leading-6 text-emerald-50">
+            {strengths.length ? strengths.join(', ') : 'None recorded yet'}
+          </p>
+        </div>
+        <div className="rounded-md border border-amber-400/20 bg-amber-500/10 p-4">
+          <p className="text-sm font-semibold text-amber-200">Concerns</p>
+          <p className="mt-2 text-sm leading-6 text-amber-50">
+            {concerns.length ? concerns.join(', ') : 'None recorded'}
           </p>
         </div>
       </div>

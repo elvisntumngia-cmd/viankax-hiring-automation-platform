@@ -169,13 +169,15 @@ function documentFilesFromRows(rows = []) {
 }
 
 function automationEventsFromRows(rows = []) {
-  return rows.map((event) => ({
-    type: event.event_type,
-    status: event.event_status,
-    label: event.event_label,
-    description: event.metadata?.description ?? event.metadata?.note ?? '',
-    createdAt: event.created_at,
-  }))
+  return [...rows]
+    .sort((first, second) => new Date(first.created_at ?? 0) - new Date(second.created_at ?? 0))
+    .map((event) => ({
+      type: event.event_type,
+      status: event.event_status,
+      label: event.event_label,
+      description: event.metadata?.description ?? event.metadata?.note ?? '',
+      createdAt: event.created_at,
+    }))
 }
 
 function stageHistoryFromRows(rows = []) {
@@ -683,49 +685,199 @@ export async function fetchApplicantForScreening(applicantId) {
   return mapApplicant(data)
 }
 
-function scoreAssessmentAnswers(answers) {
-  const combined = Object.values(answers).join(' ').toLowerCase()
-  const experienceSignals = ['security', 'patrol', 'guard', 'incident', 'report', 'post orders', 'access control', 'armed']
-  const communicationSignals = ['communicate', 'calm', 'professional', 'de-escalate', 'customer', 'public', 'respect']
-  const reliabilitySignals = ['reliable', 'available', 'on time', 'transportation', 'consistent', 'flexible', 'schedule']
-  const riskSignals = ['no', 'not comfortable', 'cannot', "can't", 'unavailable', 'unreliable']
+const aiScreeningAnswerLabels = {
+  authorizedToWork: 'Are you authorized to work in the United States?',
+  backgroundCheck: 'Are you willing to undergo a background check?',
+  hasSecurityLicense: 'Do you currently hold a valid security license or guard card?',
+  licenseType: 'What type of license do you currently hold?',
+  shiftTypes: 'Which shift types are you available for?',
+  availableDays: 'Which days are you available?',
+  weekendHolidayOvertime: 'Are you available for weekends, holidays, or overtime if needed?',
+  startDate: 'When can you start?',
+  reliableTransportation: 'Do you have reliable transportation?',
+  maxCommute: 'What is the maximum commute distance you are comfortable with?',
+  yearsExperience: 'How many years of security experience do you have?',
+  environments: 'What security environments have you worked in before?',
+  supervisedTeam: 'Have you supervised a team before?',
+  incidentReporting: 'Do you have incident reporting experience?',
+  digitalReportingTools: 'Are you comfortable using mobile apps or digital reporting tools while on duty?',
+  standingWalking: 'Are you comfortable standing or walking for long periods?',
+  outdoorWork: 'Are you comfortable working outdoors if required?',
+  workingAlone: 'Are you comfortable working alone at a site if assigned?',
+  interestReason: 'Why are you interested in this security role?',
+  preferredSecurityWork: 'What type of security work do you prefer and why?',
+  reliabilityReason: 'What makes you a reliable candidate for this role?',
+}
 
-  const countSignals = (signals) => signals.filter((signal) => combined.includes(signal)).length
-  const clamp = (value) => Math.max(55, Math.min(96, value))
-  const roleFitScore = clamp(72 + countSignals(experienceSignals) * 4)
-  const professionalismScore = clamp(76 + countSignals(communicationSignals) * 3)
-  const communicationScore = clamp(74 + countSignals(communicationSignals) * 4)
-  const availabilityScore = clamp(76 + countSignals(reliabilitySignals) * 4 - countSignals(riskSignals) * 5)
-  const screeningScore = Math.round((roleFitScore + professionalismScore + communicationScore + availabilityScore) / 4)
-  const riskFlags = countSignals(riskSignals) ? ['Review availability or comfort-level concern'] : []
-  const recommendation = screeningScore >= 85 ? 'Strong Candidate' : screeningScore >= 75 ? 'Qualified' : 'Needs Review'
+function normalizedList(value) {
+  return Array.isArray(value) ? value : value ? [value] : []
+}
+
+function writtenResponseScore(answers) {
+  const responses = [answers.interestReason, answers.preferredSecurityWork, answers.reliabilityReason]
+  const totalLength = responses.reduce((sum, answer) => sum + String(answer ?? '').trim().length, 0)
+  const completeResponses = responses.filter((answer) => String(answer ?? '').trim().length >= 25).length
+  const positiveSignals = ['reliable', 'professional', 'team', 'serve', 'protect', 'safe', 'communication', 'experience', 'available']
+  const combined = responses.join(' ').toLowerCase()
+  const signalBonus = positiveSignals.filter((signal) => combined.includes(signal)).length * 2
+
+  return Math.min(96, 58 + completeResponses * 9 + Math.min(18, Math.floor(totalLength / 45)) + signalBonus)
+}
+
+function scoreAssessmentAnswers(answers, applicant = {}) {
+  const strengths = []
+  const concerns = []
+  const knockoutConcerns = []
+  const shiftTypes = normalizedList(answers.shiftTypes)
+  const availableDays = normalizedList(answers.availableDays)
+  const environmentsWorked = normalizedList(answers.environments)
+  const requiredLicenseText = `${applicant.requiredLicenseType ?? ''} ${applicant.role ?? ''}`.toLowerCase()
+  const licenseIsRequired = requiredLicenseText.includes('spo') ||
+    requiredLicenseText.includes('armed') ||
+    requiredLicenseText.includes('so') ||
+    requiredLicenseText.includes('license') ||
+    requiredLicenseText.includes('guard card')
+  const hasUsefulLicense = answers.hasSecurityLicense === 'Yes' && !['None', ''].includes(answers.licenseType)
+
+  let eligibilityScore = 100
+  if (answers.authorizedToWork !== 'Yes') {
+    eligibilityScore -= 50
+    knockoutConcerns.push('Not authorized to work in the United States')
+  } else {
+    strengths.push('Authorized to work in the United States')
+  }
+
+  if (answers.backgroundCheck !== 'Yes') {
+    eligibilityScore -= 40
+    knockoutConcerns.push('Not willing to undergo background check')
+  } else {
+    strengths.push('Willing to undergo background check')
+  }
+
+  if (!hasUsefulLicense) {
+    eligibilityScore -= licenseIsRequired ? 30 : 10
+    concerns.push(licenseIsRequired ? 'Required license needs HR/compliance review' : 'No current security license listed')
+  } else {
+    strengths.push(`Valid ${answers.licenseType} license/guard card`)
+  }
+  eligibilityScore = Math.max(0, eligibilityScore)
+
+  const availabilityScore = Math.min(100, 45 + shiftTypes.length * 8 + availableDays.length * 4 + (answers.weekendHolidayOvertime === 'Yes' ? 15 : 0) + (answers.startDate ? 8 : 0))
+  if (shiftTypes.includes('Flexible')) strengths.push('Flexible shift availability')
+  if (answers.weekendHolidayOvertime === 'Yes') strengths.push('Available for weekends, holidays, or overtime')
+  if (availableDays.length < 3) concerns.push('Limited weekly availability')
+
+  const transportationScore = answers.reliableTransportation === 'Yes'
+    ? answers.maxCommute === '30+ miles'
+      ? 100
+      : answers.maxCommute === '20 miles'
+        ? 92
+        : 84
+    : 25
+  if (answers.reliableTransportation === 'Yes') strengths.push('Reliable transportation')
+  if (answers.reliableTransportation !== 'Yes') {
+    concerns.push('No reliable transportation for site-based work')
+    knockoutConcerns.push('No reliable transportation for site-based work')
+  }
+
+  const experienceBase = {
+    'No experience': 45,
+    'Less than 1 year': 58,
+    '1-2 years': 72,
+    '3-5 years': 86,
+    '5+ years': 95,
+  }[answers.yearsExperience] ?? 55
+  const environmentBonus = Math.min(12, environmentsWorked.filter((environment) => !['None', 'Other'].includes(environment)).length * 3)
+  const experienceScore = Math.min(100, experienceBase + environmentBonus + (answers.incidentReporting === 'Yes' ? 5 : 0) + (answers.supervisedTeam === 'Yes' ? 4 : 0))
+  if (!['No experience', 'Less than 1 year'].includes(answers.yearsExperience)) strengths.push(`${answers.yearsExperience} of security experience`)
+  if (answers.incidentReporting !== 'Yes') concerns.push('Limited incident reporting experience')
+  if (answers.supervisedTeam !== 'Yes') concerns.push('No supervisory experience')
+
+  const siteReadinessScore = Math.min(100, 40 +
+    (answers.standingWalking === 'Yes' ? 20 : 0) +
+    (answers.outdoorWork === 'Yes' ? 15 : 0) +
+    (answers.workingAlone === 'Yes' ? 15 : 0) +
+    (answers.digitalReportingTools === 'Yes' ? 10 : 0))
+  if (answers.standingWalking === 'Yes') strengths.push('Comfortable standing or walking for long periods')
+  if (answers.outdoorWork !== 'Yes') concerns.push('May not prefer outdoor posts')
+  if (answers.workingAlone !== 'Yes') concerns.push('May not prefer solo site assignments')
+
+  const communicationScore = writtenResponseScore(answers)
+  const screeningScore = Math.round(
+    eligibilityScore * 0.22 +
+    availabilityScore * 0.16 +
+    transportationScore * 0.16 +
+    experienceScore * 0.18 +
+    siteReadinessScore * 0.14 +
+    communicationScore * 0.14,
+  )
+  const overallCandidateScore = screeningScore
+
+  const recommendation = knockoutConcerns.length
+    ? 'Not Recommended'
+    : screeningScore >= 85
+      ? 'Strong Candidate'
+      : screeningScore >= 72
+        ? 'Moderate Candidate'
+        : screeningScore >= 60
+          ? 'Needs Review'
+          : 'Not Recommended'
+  const suggestedNextStep = knockoutConcerns.length
+    ? 'Hold for HR review'
+    : !hasUsefulLicense && licenseIsRequired
+      ? 'Proceed to license verification'
+      : screeningScore >= 72
+        ? 'Proceed to voice interview'
+        : 'Hold for HR review'
 
   return {
-    roleFitScore,
-    professionalismScore,
-    communicationScore,
+    eligibilityScore,
     availabilityScore,
+    transportationScore,
+    experienceScore,
+    siteReadinessScore,
+    communicationScore,
     screeningScore,
-    overallCandidateScore: Math.round(screeningScore * 0.85 + 15),
-    riskFlags,
+    overallCandidateScore,
+    roleFitScore: experienceScore,
+    professionalismScore: siteReadinessScore,
+    riskFlags: [...new Set([...knockoutConcerns, ...concerns])],
+    strengths: [...new Set(strengths)].slice(0, 6),
+    concerns: [...new Set(concerns)].slice(0, 6),
+    knockoutConcerns,
     recommendation,
+    suggestedNextStep,
+    placementSignals: {
+      licenseType: answers.licenseType,
+      shiftTypes,
+      availableDays,
+      maxCommute: answers.maxCommute,
+      environmentsWorked,
+      traits: [
+        answers.incidentReporting === 'Yes' ? 'incident reporting' : null,
+        answers.supervisedTeam === 'Yes' ? 'supervisor experience' : null,
+        answers.digitalReportingTools === 'Yes' ? 'digital reporting' : null,
+        answers.outdoorWork === 'Yes' ? 'outdoor tolerance' : null,
+        answers.workingAlone === 'Yes' ? 'solo post readiness' : null,
+      ].filter(Boolean),
+    },
   }
 }
 
-export async function submitAiScreeningAssessment(applicantId, answers) {
+export async function submitAiScreeningAssessment(applicantId, answers, applicant = {}) {
   if (!isSupabaseConfigured) {
     throw new Error('Supabase is not configured.')
   }
 
   const now = new Date().toISOString()
-  const scores = scoreAssessmentAnswers(answers)
+  const scores = scoreAssessmentAnswers(answers, applicant)
   const answerRows = Object.entries(answers).map(([question, answer]) => ({
     applicant_id: applicantId,
-    question,
-    answer,
+    question: aiScreeningAnswerLabels[question] ?? question,
+    answer: Array.isArray(answer) ? answer.join(', ') : answer,
     category: 'ai_assessment',
   }))
-  const aiSummary = `${scores.recommendation} based on submitted AI screening responses. Candidate responses show role-fit, professionalism, communication, and availability signals for HR review.`
+  const aiSummary = `${scores.recommendation}. ${scores.strengths.length ? `Strengths: ${scores.strengths.join(', ')}.` : ''} ${scores.concerns.length ? `Concerns: ${scores.concerns.join(', ')}.` : ''} Suggested next step: ${scores.suggestedNextStep}.`
 
   const operations = [
     supabase.from('screening_answers').insert(answerRows),
@@ -733,7 +885,21 @@ export async function submitAiScreeningAssessment(applicantId, answers) {
       .from('ai_screening_tasks')
       .update({
         task_status: 'completed',
-        candidate_context: { answers },
+        candidate_context: {
+          answers,
+          categoryScores: {
+            eligibility: scores.eligibilityScore,
+            availability: scores.availabilityScore,
+            transportation: scores.transportationScore,
+            experience: scores.experienceScore,
+            siteReadiness: scores.siteReadinessScore,
+            communication: scores.communicationScore,
+          },
+          strengths: scores.strengths,
+          concerns: scores.concerns,
+          suggestedNextStep: scores.suggestedNextStep,
+          placementSignals: scores.placementSignals,
+        },
         ai_summary: aiSummary,
         role_fit_score: scores.roleFitScore,
         professionalism_score: scores.professionalismScore,
@@ -750,6 +916,7 @@ export async function submitAiScreeningAssessment(applicantId, answers) {
       .from('candidate_scores')
       .upsert({
         applicant_id: applicantId,
+        eligibility_score: scores.eligibilityScore,
         screening_score: scores.screeningScore,
         overall_candidate_score: scores.overallCandidateScore,
         updated_at: now,
@@ -761,7 +928,7 @@ export async function submitAiScreeningAssessment(applicantId, answers) {
         recommendation: scores.recommendation,
         confidence: scores.screeningScore,
         summary: aiSummary,
-        risk_flags: scores.riskFlags,
+        risk_flags: scores.concerns,
         updated_at: now,
       }, { onConflict: 'applicant_id' }),
     supabase
@@ -775,10 +942,21 @@ export async function submitAiScreeningAssessment(applicantId, answers) {
       .eq('job_type', 'evaluate_ai_assessment')
       .in('job_status', ['queued', 'running']),
     supabase
+      .from('automation_events')
+      .update({
+        event_status: 'complete',
+        metadata: {
+          description: 'AI screening review moved forward after applicant completed the structured assessment.',
+        },
+      })
+      .eq('applicant_id', applicantId)
+      .eq('event_type', 'pending_ai_review')
+      .eq('event_status', 'current'),
+    supabase
       .from('applicants')
       .update({
         current_stage: 'Assessment Completed',
-        status: scores.recommendation === 'Needs Review' ? 'Needs Review' : 'Qualified',
+        status: ['Strong Candidate', 'Moderate Candidate'].includes(scores.recommendation) ? 'Qualified' : 'Needs Review',
         updated_at: now,
       })
       .eq('id', applicantId),
@@ -793,16 +971,53 @@ export async function submitAiScreeningAssessment(applicantId, answers) {
       }),
     supabase
       .from('automation_events')
-      .insert({
-        applicant_id: applicantId,
-        event_type: 'ai_screening_completed',
-        event_status: 'complete',
-        event_label: 'AI Screening Completed',
-        metadata: {
-          description: 'Applicant completed the AI screening assessment form.',
-          scores,
+      .insert([
+        {
+          applicant_id: applicantId,
+          event_type: 'ai_screening_completed',
+          event_status: 'complete',
+          event_label: 'AI Screening Completed',
+          metadata: {
+            description: 'Applicant completed the structured AI chat screening assessment.',
+            scores,
+          },
         },
-      }),
+        {
+          applicant_id: applicantId,
+          event_type: 'candidate_scored',
+          event_status: 'complete',
+          event_label: 'Candidate Scored',
+          metadata: {
+            description: `Overall screening score generated: ${scores.screeningScore}%.`,
+            screeningScore: scores.screeningScore,
+            recommendation: scores.recommendation,
+          },
+        },
+        {
+          applicant_id: applicantId,
+          event_type: 'next_step_recommended',
+          event_status: 'current',
+          event_label: 'Next Step Recommended',
+          metadata: {
+            description: scores.suggestedNextStep,
+            suggestedNextStep: scores.suggestedNextStep,
+            placementSignals: scores.placementSignals,
+          },
+        },
+      ]),
+    supabase
+      .from('workflow_runs')
+      .update({
+        run_status: 'running',
+        current_step: scores.suggestedNextStep,
+        metadata: {
+          nextAction: scores.suggestedNextStep,
+          screeningRecommendation: scores.recommendation,
+          screeningScore: scores.screeningScore,
+        },
+        updated_at: now,
+      })
+      .eq('applicant_id', applicantId),
   ]
 
   const results = await Promise.all(operations)
@@ -1091,6 +1306,40 @@ async function applyPlaceholderJobEffects(job) {
   if (effectError) throw effectError
 }
 
+async function hasSubmittedAiAssessment(applicantId) {
+  const { data, error } = await supabase
+    .from('screening_answers')
+    .select('id')
+    .eq('applicant_id', applicantId)
+    .eq('category', 'ai_assessment')
+    .limit(1)
+
+  if (error) throw error
+  return Boolean(data?.length)
+}
+
+async function deferAiAssessmentEvaluation(job) {
+  const nextCheckAt = new Date(Date.now() + 10 * 60 * 1000).toISOString()
+  const { error } = await supabase
+    .from('automation_jobs')
+    .update({
+      job_status: 'queued',
+      scheduled_for: nextCheckAt,
+      last_error: 'Waiting for applicant to complete AI screening assessment.',
+      updated_at: new Date().toISOString(),
+    })
+    .eq('id', job.id)
+
+  if (error) throw error
+  await updateWorkflowAfterJob(job.workflow_run_id)
+
+  return {
+    processed: false,
+    job: mapAutomationQueueJob({ ...job, job_status: 'queued', scheduled_for: nextCheckAt }),
+    message: 'AI screening evaluation is waiting for applicant answers. The job was deferred.',
+  }
+}
+
 async function processOrphanedEmailNotificationLocally() {
   const { data: notifications, error } = await supabase
     .from('notification_queue')
@@ -1186,6 +1435,10 @@ async function processNextAutomationJobLocally() {
   const job = jobs?.[0]
   if (!job) {
     return processOrphanedEmailNotificationLocally()
+  }
+
+  if (job.job_type === 'evaluate_ai_assessment' && !(await hasSubmittedAiAssessment(job.applicant_id))) {
+    return deferAiAssessmentEvaluation(job)
   }
 
   const now = new Date().toISOString()
@@ -1436,7 +1689,7 @@ function aiScreeningTaskRow(applicantId, application) {
   return {
     applicant_id: applicantId,
     task_status: application.knockoutResult === 'Failed' ? 'blocked' : 'queued',
-    prompt_snapshot: 'Evaluate candidate for role fit, professionalism, communication, availability, and risk flags.',
+    prompt_snapshot: 'Evaluate structured eligibility, availability, transportation, experience, site readiness, communication, and placement-matching signals.',
     candidate_context: {
       jobTitle: application.jobTitle,
       location: application.location,

@@ -3,7 +3,44 @@ import { Link } from 'react-router-dom'
 import AutomationTimeline from '../components/AutomationTimeline'
 import PageHeader from '../components/PageHeader'
 import { lookupApplicationStatus } from '../services/supabaseData'
+import { formatScore, getCandidateScores } from '../utils/candidateInsights'
 import { getLastApplication } from '../utils/applicationStorage'
+
+function getScreeningStatus(application) {
+  const scores = getCandidateScores(application)
+  const screening = application.aiScreening ?? {}
+  const nextStep = screening.candidateContext?.suggestedNextStep ?? application.workflowRuns?.[0]?.metadata?.nextAction ?? 'Next step pending'
+
+  if (Number.isFinite(scores.screeningScore) || screening.status === 'completed') {
+    return {
+      tone: 'green',
+      title: 'AI screening completed',
+      description: `${application.aiRecommendation?.label ?? screening.recommendation ?? 'Screening completed'} with screening score ${formatScore(scores.screeningScore)}.`,
+      nextStep,
+    }
+  }
+
+  const inviteSent = application.notifications?.some((notification) =>
+    notification.subject === 'Complete your ViankaX screening assessment' &&
+    notification.status === 'sent',
+  )
+
+  if (inviteSent) {
+    return {
+      tone: 'blue',
+      title: 'AI screening sent',
+      description: 'The screening assessment link has been sent to your email.',
+      nextStep: 'Complete AI screening assessment',
+    }
+  }
+
+  return {
+    tone: 'amber',
+    title: 'AI screening pending',
+    description: 'The automation workflow is preparing your AI screening assessment.',
+    nextStep: 'Watch your email for the screening link',
+  }
+}
 
 function ApplicationStatusPage() {
   const lastApplication = getLastApplication()
@@ -79,6 +116,31 @@ function ApplicationStatusPage() {
         </div>
       ) : (
         <>
+      {(() => {
+        const screeningStatus = getScreeningStatus(application)
+        const toneClass = {
+          green: 'border-green-200 bg-green-50 text-green-800',
+          blue: 'border-blue-200 bg-blue-50 text-blue-800',
+          amber: 'border-amber-200 bg-amber-50 text-amber-800',
+        }[screeningStatus.tone]
+
+        return (
+          <div className="mb-6 grid gap-4 md:grid-cols-3">
+            <div className="rounded-lg border border-[#E5E7EB] bg-white p-5 shadow-sm">
+              <p className="text-sm font-semibold text-[#6B7280]">Current stage</p>
+              <p className="mt-2 text-xl font-semibold text-[#111827]">{application.stage}</p>
+            </div>
+            <div className={`rounded-lg border p-5 shadow-sm ${toneClass}`}>
+              <p className="text-sm font-semibold">{screeningStatus.title}</p>
+              <p className="mt-2 text-sm leading-6">{screeningStatus.description}</p>
+            </div>
+            <div className="rounded-lg border border-[#E5E7EB] bg-white p-5 shadow-sm">
+              <p className="text-sm font-semibold text-[#6B7280]">Next step</p>
+              <p className="mt-2 text-lg font-semibold text-[#111827]">{screeningStatus.nextStep}</p>
+            </div>
+          </div>
+        )
+      })()}
 
       <div className="grid gap-5 lg:grid-cols-[360px_minmax(0,1fr)]">
         <aside className="rounded-lg border border-[#E5E7EB] bg-white p-5 shadow-sm">

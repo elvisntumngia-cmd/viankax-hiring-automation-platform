@@ -350,6 +350,47 @@ async function applyPlaceholderJobEffects(supabase: ReturnType<typeof createClie
   if (effectError) throw effectError
 }
 
+async function hasSubmittedAiAssessment(supabase: ReturnType<typeof createClient>, applicantId: string) {
+  const { data, error } = await supabase
+    .from('screening_answers')
+    .select('id')
+    .eq('applicant_id', applicantId)
+    .eq('category', 'ai_assessment')
+    .limit(1)
+
+  if (error) throw error
+  return Boolean(data?.length)
+}
+
+async function deferAiAssessmentEvaluation(supabase: ReturnType<typeof createClient>, job: AutomationJob) {
+  const nextCheckAt = new Date(Date.now() + 10 * 60 * 1000).toISOString()
+  const { error } = await supabase
+    .from('automation_jobs')
+    .update({
+      job_status: 'queued',
+      scheduled_for: nextCheckAt,
+      last_error: 'Waiting for applicant to complete AI screening assessment.',
+      updated_at: new Date().toISOString(),
+    })
+    .eq('id', job.id)
+
+  if (error) throw error
+  await updateWorkflowAfterJob(supabase, job.workflow_run_id)
+
+  return jsonResponse({
+    processed: false,
+    message: 'AI screening evaluation is waiting for applicant answers. The job was deferred.',
+    job: {
+      id: job.id,
+      type: job.job_type,
+      label: job.job_label,
+      status: 'queued',
+      scheduledFor: nextCheckAt,
+      applicantName: job.applicants?.full_name ?? 'Unknown applicant',
+    },
+  })
+}
+
 async function processOrphanedEmailNotification(supabase: ReturnType<typeof createClient>) {
   const now = new Date().toISOString()
   const { data: notifications, error } = await supabase
@@ -455,6 +496,10 @@ Deno.serve(async (request) => {
 
     if (!job) {
       return processOrphanedEmailNotification(supabase)
+    }
+
+    if (job.job_type === 'evaluate_ai_assessment' && !(await hasSubmittedAiAssessment(supabase, job.applicant_id))) {
+      return deferAiAssessmentEvaluation(supabase, job)
     }
 
     const { error: runningError } = await supabase
