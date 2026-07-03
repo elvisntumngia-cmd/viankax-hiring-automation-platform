@@ -136,14 +136,15 @@ function ApplicantsPipelinePage() {
   }
 
   const metricCards = [
-    ['New Applicants', applicants.filter((applicant) => applicant.stage === 'New Applicant').length, 'awaiting automation', 'text-fuchsia-300'],
-    ['AI Screened', applicants.filter((applicant) => Number.isFinite(getCandidateScores(applicant).screeningScore)).length, 'screening score available', 'text-sky-300'],
-    ['License Verified', applicants.filter((applicant) => applicant.licenseStatus === 'Verified').length, 'compliance cleared', 'text-emerald-300'],
-    ['Interviews Scheduled', applicants.filter((applicant) => applicant.stage === 'Interview Scheduled').length, 'calendar step active', 'text-blue-300'],
+    ['New Applicants', applicants.filter((applicant) => applicant.stage === 'New Applicant').length, 'awaiting automation', 'text-fuchsia-300', 'new-applicant'],
+    ['AI Screened', applicants.filter((applicant) => Number.isFinite(getCandidateScores(applicant).screeningScore)).length, 'screening score available', 'text-sky-300', 'ai-screened'],
+    ['License Verified', applicants.filter((applicant) => applicant.licenseStatus === 'Verified').length, 'compliance cleared', 'text-emerald-300', 'license-verified'],
+    ['Interviews Scheduled', applicants.filter((applicant) => applicant.stage === 'Interview Scheduled').length, 'calendar step active', 'text-blue-300', 'Interview Scheduled'],
+    ['Ready for Placement Review', applicants.filter((applicant) => applicant.stage === 'Ready for Review' || applicant.placementRecommendation).length, 'matches generated', 'text-purple-300', 'ready-placement-review'],
     ['Strong Candidates', applicants.filter((applicant) => {
       const score = getCandidateScores(applicant).overallCandidateScore
       return Number.isFinite(score) && score >= 85
-    }).length, '85+ overall score', 'text-green-300'],
+    }).length, '85+ overall score', 'text-green-300', 'strong-candidates'],
   ]
 
   return (
@@ -366,16 +367,21 @@ function ApplicantsPipelinePage() {
         ) : null}
       </div>
 
-      <div className="mt-5 grid gap-4 sm:grid-cols-2 xl:grid-cols-5">
-        {metricCards.map(([label, value, change, color]) => (
-          <article
+      <div className="mt-5 grid gap-4 sm:grid-cols-2 xl:grid-cols-6">
+        {metricCards.map(([label, value, change, color, filterKey]) => (
+          <button
+            type="button"
             key={label}
-            className="rounded-lg border border-white/[0.10] bg-[#0B111C] p-4 shadow-xl shadow-black/20 sm:p-5"
+            onClick={() => {
+              if (pipelineFilterPresets[filterKey]) updateParam('filter', filterKey)
+              else updateParam('stage', filterKey)
+            }}
+            className="rounded-lg border border-white/[0.10] bg-[#0B111C] p-4 text-left shadow-xl shadow-black/20 transition hover:border-[#0084FF]/50 hover:bg-[#101827] sm:p-5"
           >
             <p className={`font-semibold ${color}`}>{label}</p>
             <p className="mt-3 text-3xl font-semibold text-white sm:text-4xl">{value}</p>
             <p className="mt-2 text-sm font-semibold text-emerald-300">{change}</p>
-          </article>
+          </button>
         ))}
       </div>
     </section>

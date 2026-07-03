@@ -73,6 +73,22 @@ function mapOpenShift(row) {
   }
 }
 
+function mapPlacementMatches(rows = []) {
+  return rows
+    .map((match) => ({
+      id: match.id,
+      matchScore: match.match_score ?? 0,
+      reason: match.recommendation_reason ?? 'Placement recommendation pending.',
+      strengths: match.strengths ?? [],
+      concerns: match.concerns ?? [],
+      status: match.match_status ?? 'Recommended',
+      site: match.job_sites ? mapJobSite({ ...match.job_sites, open_shifts: [] }) : null,
+      shift: match.open_shifts ? mapOpenShift(match.open_shifts) : null,
+      createdAt: match.created_at,
+    }))
+    .sort((first, second) => second.matchScore - first.matchScore)
+}
+
 function isUuid(value) {
   return /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(value)
 }
@@ -280,6 +296,7 @@ function mapApplicant(row) {
   const recommendation = row.ai_recommendations?.[0] ?? {}
   const voiceInterview = row.voice_interviews?.[0] ?? {}
   const interviewSchedule = row.interview_schedules?.[0] ?? {}
+  const placementMatches = mapPlacementMatches(row.placement_matches)
   const job = row.jobs ?? {}
   const client = row.clients ?? job.clients ?? {}
   const screeningAnswers = row.screening_answers?.length
@@ -369,6 +386,23 @@ function mapApplicant(row) {
       schedulingUrl: interviewSchedule.scheduling_url ?? null,
       provider: interviewSchedule.provider ?? null,
     },
+    placementMatches,
+    placementRecommendation: placementMatches.length
+      ? {
+        matchScore: placementMatches[0].matchScore,
+        reason: placementMatches[0].reason,
+        strengths: placementMatches[0].strengths,
+        concerns: placementMatches[0].concerns,
+        bestSite: placementMatches[0].site,
+        bestShift: placementMatches[0].shift,
+        alternatives: placementMatches.slice(1).map((match) => ({
+          shiftId: match.shift?.id ?? match.id,
+          score: match.matchScore,
+          shift: match.shift,
+          site: match.site,
+        })),
+      }
+      : null,
     interviewTime: interviewSchedule.scheduled_for
       ? new Intl.DateTimeFormat('en-US', {
         month: 'long',
@@ -586,7 +620,18 @@ export async function fetchApplicants() {
       ),
       ai_recommendations(recommendation, confidence, summary, risk_flags),
       voice_interviews(provider, recording_url, score, transcript, recommendation, status),
-      interview_schedules(provider, scheduled_for, scheduling_url, status)
+      interview_schedules(provider, scheduled_for, scheduling_url, status),
+      placement_matches(
+        id,
+        match_score,
+        recommendation_reason,
+        strengths,
+        concerns,
+        match_status,
+        created_at,
+        job_sites(*),
+        open_shifts(*, job_sites(site_name))
+      )
     `)
     .order('submitted_at', { ascending: false })
 
@@ -634,7 +679,18 @@ export async function lookupApplicationStatus({ email, phone }) {
       ),
       ai_recommendations(recommendation, confidence, summary, risk_flags),
       voice_interviews(provider, recording_url, score, transcript, recommendation, status),
-      interview_schedules(provider, scheduled_for, scheduling_url, status)
+      interview_schedules(provider, scheduled_for, scheduling_url, status),
+      placement_matches(
+        id,
+        match_score,
+        recommendation_reason,
+        strengths,
+        concerns,
+        match_status,
+        created_at,
+        job_sites(*),
+        open_shifts(*, job_sites(site_name))
+      )
     `)
     .order('submitted_at', { ascending: false })
     .limit(1)
@@ -687,7 +743,18 @@ export async function fetchApplicantForScreening(applicantId) {
       ),
       ai_recommendations(recommendation, confidence, summary, risk_flags),
       voice_interviews(provider, recording_url, score, transcript, recommendation, status),
-      interview_schedules(provider, scheduled_for, scheduling_url, status)
+      interview_schedules(provider, scheduled_for, scheduling_url, status),
+      placement_matches(
+        id,
+        match_score,
+        recommendation_reason,
+        strengths,
+        concerns,
+        match_status,
+        created_at,
+        job_sites(*),
+        open_shifts(*, job_sites(site_name))
+      )
     `)
     .eq('id', applicantId)
     .single()
@@ -1362,6 +1429,7 @@ async function applyPlaceholderJobEffects(job) {
 
   if (job.job_type === 'send_scheduling_link') {
     const scheduledFor = new Date(Date.now() + 3 * 24 * 60 * 60 * 1000).toISOString()
+    const placementMatches = await generatePlacementMatches(job.applicant_id)
     effects.push(
       supabase
         .from('interview_schedules')
@@ -1378,7 +1446,7 @@ async function applyPlaceholderJobEffects(job) {
       supabase
         .from('applicants')
         .update({
-          current_stage: 'Interview Scheduled',
+          current_stage: 'Ready for Review',
           interview_status: 'Scheduled',
           status: 'Qualified',
           updated_at: now,
@@ -1391,11 +1459,14 @@ async function applyPlaceholderJobEffects(job) {
         .insert({
           applicant_id: job.applicant_id,
           from_stage: job.applicants?.current_stage ?? null,
-          to_stage: 'Interview Scheduled',
+          to_stage: 'Ready for Review',
           changed_by: 'automation_processor',
-          reason: 'Final in-person interview was scheduled automatically.',
+          reason: 'Final in-person interview was scheduled and AI placement matches were generated automatically.',
         }),
     )
+    if (placementMatches.length) {
+      effects.push(supabase.from('placement_matches').insert(placementMatches))
+    }
   }
 
   effects.push(supabase.from('automation_events').insert(processedEventForJob(job)))
@@ -1403,6 +1474,100 @@ async function applyPlaceholderJobEffects(job) {
   const results = await Promise.all(effects)
   const effectError = results.find((result) => result.error)?.error
   if (effectError) throw effectError
+}
+
+async function generatePlacementMatches(applicantId) {
+  const [{ data: applicant }, { data: shifts, error: shiftsError }] = await Promise.all([
+    supabase
+      .from('applicants')
+      .select(`
+        id,
+        job_id,
+        site_id,
+        open_shift_id,
+        license_status,
+        ai_screening_tasks(candidate_context),
+        candidate_scores(screening_score, voice_interview_score, overall_candidate_score)
+      `)
+      .eq('id', applicantId)
+      .single(),
+    supabase
+      .from('open_shifts')
+      .select('*, job_sites(*)')
+      .eq('status', 'Open'),
+  ])
+
+  if (shiftsError) throw shiftsError
+  const signals = applicant?.ai_screening_tasks?.[0]?.candidate_context?.placementSignals ?? {}
+  const scores = applicant?.candidate_scores?.[0] ?? {}
+  const shiftTypes = normalizedList(signals.shiftTypes)
+  const availableDays = normalizedList(signals.availableDays)
+  const traits = normalizedList(signals.traits)
+  const licenseType = String(signals.licenseType ?? '').toLowerCase()
+  const baseScore = Math.round(((scores.screening_score ?? 75) + (scores.voice_interview_score ?? scores.overall_candidate_score ?? 75)) / 2)
+
+  return (shifts ?? [])
+    .map((shift) => {
+      let matchScore = Math.min(96, Math.max(45, baseScore))
+      const strengths = []
+      const concerns = []
+      const requiredLicense = String(shift.required_license_type ?? '').toLowerCase()
+
+      if (applicant?.open_shift_id === shift.id) {
+        matchScore += 8
+        strengths.push('Applied directly to this open shift')
+      }
+      if (licenseType && requiredLicense && (licenseType === requiredLicense || (requiredLicense === 'so' && ['so', 'unarmed'].includes(licenseType)))) {
+        matchScore += 8
+        strengths.push(`License aligns with ${shift.required_license_type} requirement`)
+      } else if (requiredLicense) {
+        matchScore -= 12
+        concerns.push(`Review ${shift.required_license_type} license requirement`)
+      }
+      if (shiftTypes.includes(shift.shift_type)) {
+        matchScore += 7
+        strengths.push(`${shift.shift_type} availability`)
+      } else if (shiftTypes.includes('Flexible')) {
+        matchScore += 5
+        strengths.push('Flexible shift availability')
+      } else {
+        matchScore -= 6
+        concerns.push(`${shift.shift_type} shift availability not confirmed`)
+      }
+
+      const dayOverlap = normalizedList(shift.days_needed).filter((day) => availableDays.includes(day)).length
+      if (dayOverlap) {
+        matchScore += Math.min(8, dayOverlap * 2)
+        strengths.push('Available on needed days')
+      } else {
+        matchScore -= 4
+        concerns.push('Confirm day-of-week availability')
+      }
+
+      const requiredTraits = normalizedList(shift.required_traits)
+      const matchingTraits = requiredTraits.filter((trait) => traits.includes(trait))
+      if (matchingTraits.length) {
+        matchScore += Math.min(10, matchingTraits.length * 4)
+        strengths.push(...matchingTraits)
+      }
+
+      matchScore = Math.max(35, Math.min(98, matchScore))
+
+      return {
+        applicant_id: applicantId,
+        site_id: shift.site_id,
+        open_shift_id: shift.id,
+        job_id: applicant?.job_id ?? null,
+        match_score: matchScore,
+        recommendation_reason: `${shift.job_sites?.site_name ?? 'This site'} is a ${matchScore}% match based on license fit, shift availability, screening score, voice interview score, and site traits.`,
+        strengths: [...new Set(strengths)].slice(0, 6),
+        concerns: [...new Set(concerns)].slice(0, 4),
+        match_status: 'Recommended',
+        updated_at: new Date().toISOString(),
+      }
+    })
+    .sort((first, second) => second.match_score - first.match_score)
+    .slice(0, 4)
 }
 
 async function hasSubmittedAiAssessment(applicantId) {

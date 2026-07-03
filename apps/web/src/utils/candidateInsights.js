@@ -94,6 +94,14 @@ export const pipelineFilterPresets = {
     label: 'Pending AI Review',
     match: (applicant) => !Number.isFinite(getCandidateScores(applicant).screeningScore),
   },
+  'ai-screened': {
+    label: 'AI Screened',
+    match: (applicant) => Number.isFinite(getCandidateScores(applicant).screeningScore),
+  },
+  'license-verified': {
+    label: 'License Verified',
+    match: (applicant) => applicant.licenseStatus === 'Verified',
+  },
   'pending-compliance-review': {
     label: 'Pending Compliance Review',
     match: (applicant) =>
@@ -112,6 +120,10 @@ export const pipelineFilterPresets = {
       const score = getCandidateScores(applicant).overallCandidateScore
       return Number.isFinite(score) && score >= 85
     },
+  },
+  'ready-placement-review': {
+    label: 'Ready for Placement Review',
+    match: (applicant) => applicant.stage === 'Ready for Review' || Boolean(applicant.placementRecommendation),
   },
 }
 

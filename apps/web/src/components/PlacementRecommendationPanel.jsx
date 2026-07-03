@@ -1,7 +1,8 @@
 import { getPlacementRecommendation } from '../data/dummySites'
 
 function PlacementRecommendationPanel({ applicant }) {
-  const recommendation = getPlacementRecommendation(applicant)
+  const recommendation = applicant.placementRecommendation ?? getPlacementRecommendation(applicant)
+  const alternatives = recommendation.alternatives ?? []
 
   return (
     <section className="rounded-lg border border-white/[0.10] bg-[#0B111C] p-5 shadow-xl shadow-black/20">
@@ -48,8 +49,8 @@ function PlacementRecommendationPanel({ applicant }) {
       <div className="mt-5">
         <p className="text-sm font-semibold text-zinc-500">Alternative matches</p>
         <div className="mt-3 grid gap-3">
-          {recommendation.alternatives.map((alternative) => (
-            <div key={alternative.shiftId} className="flex flex-col gap-2 rounded-md border border-white/[0.08] bg-white/[0.04] p-3 sm:flex-row sm:items-center sm:justify-between">
+          {alternatives.length ? alternatives.map((alternative) => (
+            <div key={alternative.shiftId ?? alternative.shift?.id ?? alternative.site?.id} className="flex flex-col gap-2 rounded-md border border-white/[0.08] bg-white/[0.04] p-3 sm:flex-row sm:items-center sm:justify-between">
               <div>
                 <p className="font-semibold text-white">{alternative.site?.siteName ?? 'Site pending'}</p>
                 <p className="mt-1 text-sm text-zinc-400">{alternative.shift?.shiftTitle ?? 'Shift pending'}</p>
@@ -58,7 +59,11 @@ function PlacementRecommendationPanel({ applicant }) {
                 {alternative.score}%
               </span>
             </div>
-          ))}
+          )) : (
+            <p className="rounded-md border border-white/[0.08] bg-white/[0.04] p-3 text-sm text-zinc-400">
+              Alternative matches will appear after more open shifts are available.
+            </p>
+          )}
         </div>
       </div>
     </section>

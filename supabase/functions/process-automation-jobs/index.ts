@@ -44,6 +44,10 @@ function errorMessage(error: unknown) {
   return error instanceof Error ? error.message : String(error)
 }
 
+function normalizedList(value: unknown) {
+  return Array.isArray(value) ? value : value ? [value] : []
+}
+
 function processedEventForJob(job: AutomationJob, provider = 'placeholder') {
   const eventMap: Record<string, [string, string, string]> = {
     send_confirmation_sms: ['confirmation_sms_sent', 'Confirmation SMS Sent', 'Placeholder SMS confirmation was marked as sent.'],
@@ -395,6 +399,7 @@ async function applyPlaceholderJobEffects(supabase: ReturnType<typeof createClie
 
   if (job.job_type === 'send_scheduling_link') {
     const scheduledFor = new Date(Date.now() + 3 * 24 * 60 * 60 * 1000).toISOString()
+    const placementMatches = await generatePlacementMatches(supabase, job.applicant_id)
     effects.push(
       supabase
         .from('interview_schedules')
@@ -411,7 +416,7 @@ async function applyPlaceholderJobEffects(supabase: ReturnType<typeof createClie
       supabase
         .from('applicants')
         .update({
-          current_stage: 'Interview Scheduled',
+          current_stage: 'Ready for Review',
           interview_status: 'Scheduled',
           status: 'Qualified',
           updated_at: now,
@@ -424,11 +429,14 @@ async function applyPlaceholderJobEffects(supabase: ReturnType<typeof createClie
         .insert({
           applicant_id: job.applicant_id,
           from_stage: job.applicants?.current_stage ?? null,
-          to_stage: 'Interview Scheduled',
+          to_stage: 'Ready for Review',
           changed_by: 'edge_function_processor',
-          reason: 'Final in-person interview was scheduled automatically.',
+          reason: 'Final in-person interview was scheduled and AI placement matches were generated automatically.',
         }),
     )
+    if (placementMatches.length) {
+      effects.push(supabase.from('placement_matches').insert(placementMatches))
+    }
   }
 
   effects.push(supabase.from('automation_events').insert(processedEventForJob(job, provider)))
@@ -436,6 +444,100 @@ async function applyPlaceholderJobEffects(supabase: ReturnType<typeof createClie
   const results = await Promise.all(effects)
   const effectError = results.find((result) => result.error)?.error
   if (effectError) throw effectError
+}
+
+async function generatePlacementMatches(supabase: ReturnType<typeof createClient>, applicantId: string) {
+  const [{ data: applicant }, { data: shifts, error: shiftsError }] = await Promise.all([
+    supabase
+      .from('applicants')
+      .select(`
+        id,
+        job_id,
+        site_id,
+        open_shift_id,
+        license_status,
+        ai_screening_tasks(candidate_context),
+        candidate_scores(screening_score, voice_interview_score, overall_candidate_score)
+      `)
+      .eq('id', applicantId)
+      .single(),
+    supabase
+      .from('open_shifts')
+      .select('*, job_sites(*)')
+      .eq('status', 'Open'),
+  ])
+
+  if (shiftsError) throw shiftsError
+  const signals = applicant?.ai_screening_tasks?.[0]?.candidate_context?.placementSignals ?? {}
+  const scores = applicant?.candidate_scores?.[0] ?? {}
+  const shiftTypes = normalizedList(signals.shiftTypes)
+  const availableDays = normalizedList(signals.availableDays)
+  const traits = normalizedList(signals.traits)
+  const licenseType = String(signals.licenseType ?? '').toLowerCase()
+  const baseScore = Math.round(((scores.screening_score ?? 75) + (scores.voice_interview_score ?? scores.overall_candidate_score ?? 75)) / 2)
+
+  return (shifts ?? [])
+    .map((shift: Record<string, any>) => {
+      let matchScore = Math.min(96, Math.max(45, baseScore))
+      const strengths: string[] = []
+      const concerns: string[] = []
+      const requiredLicense = String(shift.required_license_type ?? '').toLowerCase()
+
+      if (applicant?.open_shift_id === shift.id) {
+        matchScore += 8
+        strengths.push('Applied directly to this open shift')
+      }
+      if (licenseType && requiredLicense && (licenseType === requiredLicense || (requiredLicense === 'so' && ['so', 'unarmed'].includes(licenseType)))) {
+        matchScore += 8
+        strengths.push(`License aligns with ${shift.required_license_type} requirement`)
+      } else if (requiredLicense) {
+        matchScore -= 12
+        concerns.push(`Review ${shift.required_license_type} license requirement`)
+      }
+      if (shiftTypes.includes(shift.shift_type)) {
+        matchScore += 7
+        strengths.push(`${shift.shift_type} availability`)
+      } else if (shiftTypes.includes('Flexible')) {
+        matchScore += 5
+        strengths.push('Flexible shift availability')
+      } else {
+        matchScore -= 6
+        concerns.push(`${shift.shift_type} shift availability not confirmed`)
+      }
+
+      const dayOverlap = normalizedList(shift.days_needed).filter((day) => availableDays.includes(day)).length
+      if (dayOverlap) {
+        matchScore += Math.min(8, dayOverlap * 2)
+        strengths.push('Available on needed days')
+      } else {
+        matchScore -= 4
+        concerns.push('Confirm day-of-week availability')
+      }
+
+      const requiredTraits = normalizedList(shift.required_traits)
+      const matchingTraits = requiredTraits.filter((trait) => traits.includes(trait))
+      if (matchingTraits.length) {
+        matchScore += Math.min(10, matchingTraits.length * 4)
+        strengths.push(...matchingTraits.map(String))
+      }
+
+      matchScore = Math.max(35, Math.min(98, matchScore))
+
+      return {
+        applicant_id: applicantId,
+        site_id: shift.site_id,
+        open_shift_id: shift.id,
+        job_id: applicant?.job_id ?? null,
+        match_score: matchScore,
+        recommendation_reason: `${shift.job_sites?.site_name ?? 'This site'} is a ${matchScore}% match based on license fit, shift availability, screening score, voice interview score, and site traits.`,
+        strengths: [...new Set(strengths)].slice(0, 6),
+        concerns: [...new Set(concerns)].slice(0, 4),
+        match_status: 'Recommended',
+        updated_at: new Date().toISOString(),
+      }
+    })
+    .sort((first, second) => second.match_score - first.match_score)
+    .slice(0, 4)
 }
 
 async function hasSubmittedAiAssessment(supabase: ReturnType<typeof createClient>, applicantId: string) {

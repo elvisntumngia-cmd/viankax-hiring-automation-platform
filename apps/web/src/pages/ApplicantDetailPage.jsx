@@ -204,7 +204,7 @@ function ApplicantDetailPage() {
 
   const scores = getCandidateScores(applicant)
   const canUpdateDecision = isSupabaseRecord(applicant)
-  const placementRecommendation = getPlacementRecommendation(applicant)
+  const placementRecommendation = applicant.placementRecommendation ?? getPlacementRecommendation(applicant)
   const groupedScreeningAnswers = groupScreeningAnswers(applicant.screeningAnswers)
 
   return (
