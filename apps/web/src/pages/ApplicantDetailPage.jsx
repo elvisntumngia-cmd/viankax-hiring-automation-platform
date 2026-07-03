@@ -391,14 +391,34 @@ function ApplicantDetailPage() {
             label="Score"
             value={applicant.voiceInterview.score ?? 'Not available'}
           />
-          <DetailRow label="Status" value={applicant.interviewStatus} />
-          <DetailRow label="Interview date/time" value={applicant.interviewTime} />
+          <DetailRow label="Status" value={applicant.voiceInterview.status ?? applicant.interviewStatus} />
+          <DetailRow label="Recording" value={applicant.voiceInterview.recordingUrl ? 'Placeholder recording available' : 'Not available'} />
           <p className="mt-4 rounded-md border border-white/[0.08] bg-white/[0.04] p-3">
             {applicant.voiceInterview.transcript}
           </p>
           <p className="mt-3 font-semibold text-white">
             Recommendation: {applicant.voiceInterview.recommendation}
           </p>
+        </InfoCard>
+
+        <InfoCard title="Final in-person interview">
+          <DetailRow label="Status" value={applicant.finalInterview?.status ?? 'Not Scheduled'} />
+          <DetailRow label="Date/time" value={applicant.interviewTime} />
+          <DetailRow label="Provider" value={applicant.finalInterview?.provider ?? 'Calendar placeholder'} />
+          {applicant.finalInterview?.schedulingUrl ? (
+            <a
+              href={applicant.finalInterview.schedulingUrl}
+              target="_blank"
+              rel="noreferrer"
+              className="mt-4 inline-flex rounded-md border border-[#0084FF]/40 bg-[#0084FF]/10 px-4 py-2 font-semibold text-[#7CC0FF] hover:bg-[#0084FF]/20"
+            >
+              Open scheduling link
+            </a>
+          ) : (
+            <p className="mt-4 rounded-md border border-white/[0.08] bg-white/[0.04] p-3">
+              Scheduling link has not synced yet.
+            </p>
+          )}
         </InfoCard>
 
         <InfoCard title="Notes & decision controls">

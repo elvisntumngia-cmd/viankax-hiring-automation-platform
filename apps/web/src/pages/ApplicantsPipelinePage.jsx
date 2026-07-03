@@ -243,8 +243,18 @@ function ApplicantsPipelinePage() {
                     <p className="mt-1">{formatScore(getCandidateScores(applicant).screeningScore)}</p>
                   </div>
                   <div>
+                    <p className="text-xs font-semibold uppercase tracking-wide text-zinc-500">Voice interview</p>
+                    <p className="mt-1">{formatScore(getCandidateScores(applicant).voiceInterviewScore)}</p>
+                  </div>
+                </div>
+                <div className="grid grid-cols-2 gap-3">
+                  <div>
                     <p className="text-xs font-semibold uppercase tracking-wide text-zinc-500">Compliance</p>
                     <p className="mt-1">{applicant.licenseStatus}</p>
+                  </div>
+                  <div>
+                    <p className="text-xs font-semibold uppercase tracking-wide text-zinc-500">Final interview</p>
+                    <p className="mt-1">{applicant.finalInterview?.status ?? applicant.interviewStatus}</p>
                   </div>
                 </div>
                 <div>
@@ -282,10 +292,10 @@ function ApplicantsPipelinePage() {
         </div>
 
         <div className="hidden overflow-x-auto md:block">
-          <table className="w-full min-w-[900px] border-collapse text-left text-sm">
+          <table className="w-full min-w-[1100px] border-collapse text-left text-sm">
             <thead className="text-zinc-400">
               <tr className="border-b border-white/[0.08]">
-                {['Applicant', 'Position', 'Stage', 'Overall Score', 'AI Screening', 'Latest Activity', 'Updated', 'Actions'].map((head) => (
+                {['Applicant', 'Position', 'Stage', 'Overall Score', 'AI Screening', 'Voice Interview', 'Final Interview', 'Latest Activity', 'Updated', 'Actions'].map((head) => (
                   <th key={head} className="px-4 py-4 font-semibold lg:px-5">
                     {head}
                   </th>
@@ -304,6 +314,11 @@ function ApplicantsPipelinePage() {
                     {formatScore(getCandidateScores(applicant).overallCandidateScore)}
                   </td>
                   <td className="px-4 py-4 lg:px-5">{formatScore(getCandidateScores(applicant).screeningScore)}</td>
+                  <td className="px-4 py-4 lg:px-5">{formatScore(getCandidateScores(applicant).voiceInterviewScore)}</td>
+                  <td className="px-4 py-4 lg:px-5">
+                    <p className="font-semibold text-zinc-200">{applicant.finalInterview?.status ?? applicant.interviewStatus}</p>
+                    <p className="mt-1 text-xs text-zinc-500">{applicant.interviewTime}</p>
+                  </td>
                   <td className="px-4 py-4 lg:px-5">
                     <p className="font-semibold text-zinc-200">{applicant.latestEvent?.label ?? 'No event recorded'}</p>
                     <p className="mt-1 text-xs text-zinc-500">{applicant.licenseStatus}</p>

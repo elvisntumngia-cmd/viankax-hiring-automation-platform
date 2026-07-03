@@ -279,6 +279,7 @@ function mapApplicant(row) {
   const scores = row.candidate_scores?.[0] ?? {}
   const recommendation = row.ai_recommendations?.[0] ?? {}
   const voiceInterview = row.voice_interviews?.[0] ?? {}
+  const interviewSchedule = row.interview_schedules?.[0] ?? {}
   const job = row.jobs ?? {}
   const client = row.clients ?? job.clients ?? {}
   const screeningAnswers = row.screening_answers?.length
@@ -357,17 +358,27 @@ function mapApplicant(row) {
     screeningAnswers,
     voiceInterview: {
       score: voiceInterview.score ?? null,
+      status: voiceInterview.status ?? row.interview_status ?? 'Not Started',
+      recordingUrl: voiceInterview.recording_url ?? null,
       transcript: voiceInterview.transcript ?? 'Voice interview has not been triggered yet.',
       recommendation: voiceInterview.recommendation ?? 'Wait for screening and document review.',
     },
-    interviewTime: row.interview_schedules?.[0]?.scheduled_for
+    finalInterview: {
+      status: interviewSchedule.status ?? (row.current_stage === 'Interview Scheduled' ? 'Scheduled' : 'Not Scheduled'),
+      scheduledFor: interviewSchedule.scheduled_for ?? null,
+      schedulingUrl: interviewSchedule.scheduling_url ?? null,
+      provider: interviewSchedule.provider ?? null,
+    },
+    interviewTime: interviewSchedule.scheduled_for
       ? new Intl.DateTimeFormat('en-US', {
         month: 'long',
         day: 'numeric',
         year: 'numeric',
         hour: 'numeric',
         minute: '2-digit',
-      }).format(new Date(row.interview_schedules[0].scheduled_for))
+      }).format(new Date(interviewSchedule.scheduled_for))
+      : row.current_stage === 'Interview Scheduled'
+        ? 'Scheduled - date/time pending sync'
       : 'Not scheduled',
     notes: row.notes ?? 'No notes recorded yet.',
     decision: row.final_decision,
@@ -574,8 +585,8 @@ export async function fetchApplicants() {
         overall_candidate_score
       ),
       ai_recommendations(recommendation, confidence, summary, risk_flags),
-      voice_interviews(score, transcript, recommendation, status),
-      interview_schedules(scheduled_for, status)
+      voice_interviews(provider, recording_url, score, transcript, recommendation, status),
+      interview_schedules(provider, scheduled_for, scheduling_url, status)
     `)
     .order('submitted_at', { ascending: false })
 
@@ -622,8 +633,8 @@ export async function lookupApplicationStatus({ email, phone }) {
         overall_candidate_score
       ),
       ai_recommendations(recommendation, confidence, summary, risk_flags),
-      voice_interviews(score, transcript, recommendation, status),
-      interview_schedules(scheduled_for, status)
+      voice_interviews(provider, recording_url, score, transcript, recommendation, status),
+      interview_schedules(provider, scheduled_for, scheduling_url, status)
     `)
     .order('submitted_at', { ascending: false })
     .limit(1)
@@ -675,8 +686,8 @@ export async function fetchApplicantForScreening(applicantId) {
         overall_candidate_score
       ),
       ai_recommendations(recommendation, confidence, summary, risk_flags),
-      voice_interviews(score, transcript, recommendation, status),
-      interview_schedules(scheduled_for, status)
+      voice_interviews(provider, recording_url, score, transcript, recommendation, status),
+      interview_schedules(provider, scheduled_for, scheduling_url, status)
     `)
     .eq('id', applicantId)
     .single()
