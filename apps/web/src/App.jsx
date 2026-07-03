@@ -1,6 +1,5 @@
 import { NavLink, Navigate, Route, Routes, useLocation } from 'react-router-dom'
 import {
-  BriefcaseBusiness,
   CalendarClock,
   ClipboardList,
   Home,
@@ -10,6 +9,7 @@ import {
   UsersRound,
 } from 'lucide-react'
 import ProtectedRoute from './components/ProtectedRoute'
+import AiScreeningPage from './pages/AiScreeningPage'
 import ApplicantDetailPage from './pages/ApplicantDetailPage'
 import ApplicantsPipelinePage from './pages/ApplicantsPipelinePage'
 import ApplicationPage from './pages/ApplicationPage'
@@ -63,16 +63,12 @@ function AppShell({ children }) {
   return (
     <div className="min-h-screen lg:grid lg:grid-cols-[260px_minmax(0,1fr)]">
       <aside className="border-b border-black/10 bg-[#09090B] px-4 py-4 text-white sm:px-5 lg:min-h-screen lg:border-b-0 lg:border-r lg:py-5">
-        <NavLink to="/" className="flex items-center gap-3">
-          <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg bg-[#0084FF] text-white">
-            <BriefcaseBusiness size={21} />
-          </span>
-          <span className="min-w-0">
-            <span className="block text-base font-semibold">ViankaX</span>
-            <span className="block truncate text-xs uppercase tracking-wide text-zinc-400">
-              Hiring automation
-            </span>
-          </span>
+        <NavLink to="/" className="flex items-center">
+          <img
+            src="/viankax-wordmark.png"
+            alt="ViankaX"
+            className="h-[114px] w-auto max-w-[240px] object-contain"
+          />
         </NavLink>
 
         <nav className="mt-4 flex gap-2 overflow-x-auto pb-1 lg:mt-6 lg:grid lg:overflow-visible lg:pb-0">
@@ -108,33 +104,7 @@ function AppShell({ children }) {
               : 'border-[#E5E7EB] bg-white/95'
           }`}
         >
-          <div className="flex flex-col gap-4 px-4 py-4 sm:px-5 md:flex-row md:items-center md:justify-between lg:px-8">
-            <NavLink to="/" className="flex min-w-0 items-center gap-3">
-              <span
-                className={`flex h-10 w-10 shrink-0 items-center justify-center rounded-lg ${
-                  isDarkShell ? 'bg-[#09090B] text-[#0084FF]' : 'bg-[#0084FF] text-white'
-                }`}
-              >
-                <BriefcaseBusiness size={21} />
-              </span>
-              <span className="min-w-0">
-                <span
-                  className={`block truncate text-base font-semibold sm:text-lg ${
-                    isDarkShell ? 'text-white' : 'text-[#111827]'
-                  }`}
-                >
-                  ViankaX Hiring Automation Platform
-                </span>
-                <span
-                  className={`hidden text-xs font-medium uppercase tracking-wide sm:block ${
-                    isDarkShell ? 'text-[#71717A]' : 'text-[#6B7280]'
-                  }`}
-                >
-                  Applicant Portal + Automation Engine + HR Dashboard
-                </span>
-              </span>
-            </NavLink>
-
+          <div className="flex px-4 py-3 sm:px-5 lg:px-8">
             <nav
               className={`flex max-w-full gap-1 overflow-x-auto rounded-lg border p-1 ${
                 isDarkShell
@@ -170,6 +140,7 @@ function App() {
         <Route path="/jobs" element={<JobsPage />} />
         <Route path="/jobs/:jobId" element={<JobDetailsPage />} />
         <Route path="/apply/:jobId" element={<ApplicationPage />} />
+        <Route path="/screening/:applicantId" element={<AiScreeningPage />} />
         <Route path="/success" element={<ApplicationSuccessPage />} />
         <Route path="/status" element={<ApplicationStatusPage />} />
         <Route path="/login" element={<LoginPage />} />

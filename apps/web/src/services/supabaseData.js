@@ -634,6 +634,188 @@ export async function lookupApplicationStatus({ email, phone }) {
   return data?.[0] ? mapApplicant(data[0]) : null
 }
 
+export async function fetchApplicantForScreening(applicantId) {
+  if (!isSupabaseConfigured) return null
+
+  const { data, error } = await supabase
+    .from('applicants')
+    .select(`
+      *,
+      clients(name),
+      jobs(title, location, clients(name)),
+      applicant_documents(document_type, file_name, storage_bucket, storage_path, status),
+      automation_events(event_type, event_status, event_label, metadata, created_at),
+      workflow_runs(id, workflow_name, run_status, current_step, started_at, completed_at, metadata, created_at, updated_at),
+      automation_jobs(id, job_type, job_label, job_status, priority, scheduled_for, attempts, last_error, payload, created_at, updated_at),
+      notification_queue(id, channel, recipient, subject, message, notification_status, scheduled_for, sent_at, last_error, metadata),
+      ai_screening_tasks(
+        id,
+        task_status,
+        prompt_snapshot,
+        candidate_context,
+        ai_summary,
+        role_fit_score,
+        professionalism_score,
+        communication_score,
+        availability_score,
+        risk_flags,
+        recommendation,
+        completed_at,
+        ai_screening_templates(name, role_family)
+      ),
+      pipeline_stage_history(from_stage, to_stage, changed_by, reason, created_at),
+      screening_answers(question, answer),
+      candidate_scores(
+        resume_score,
+        eligibility_score,
+        screening_score,
+        voice_interview_score,
+        overall_candidate_score
+      ),
+      ai_recommendations(recommendation, confidence, summary, risk_flags),
+      voice_interviews(score, transcript, recommendation, status),
+      interview_schedules(scheduled_for, status)
+    `)
+    .eq('id', applicantId)
+    .single()
+
+  if (error) throw error
+  return mapApplicant(data)
+}
+
+function scoreAssessmentAnswers(answers) {
+  const combined = Object.values(answers).join(' ').toLowerCase()
+  const experienceSignals = ['security', 'patrol', 'guard', 'incident', 'report', 'post orders', 'access control', 'armed']
+  const communicationSignals = ['communicate', 'calm', 'professional', 'de-escalate', 'customer', 'public', 'respect']
+  const reliabilitySignals = ['reliable', 'available', 'on time', 'transportation', 'consistent', 'flexible', 'schedule']
+  const riskSignals = ['no', 'not comfortable', 'cannot', "can't", 'unavailable', 'unreliable']
+
+  const countSignals = (signals) => signals.filter((signal) => combined.includes(signal)).length
+  const clamp = (value) => Math.max(55, Math.min(96, value))
+  const roleFitScore = clamp(72 + countSignals(experienceSignals) * 4)
+  const professionalismScore = clamp(76 + countSignals(communicationSignals) * 3)
+  const communicationScore = clamp(74 + countSignals(communicationSignals) * 4)
+  const availabilityScore = clamp(76 + countSignals(reliabilitySignals) * 4 - countSignals(riskSignals) * 5)
+  const screeningScore = Math.round((roleFitScore + professionalismScore + communicationScore + availabilityScore) / 4)
+  const riskFlags = countSignals(riskSignals) ? ['Review availability or comfort-level concern'] : []
+  const recommendation = screeningScore >= 85 ? 'Strong Candidate' : screeningScore >= 75 ? 'Qualified' : 'Needs Review'
+
+  return {
+    roleFitScore,
+    professionalismScore,
+    communicationScore,
+    availabilityScore,
+    screeningScore,
+    overallCandidateScore: Math.round(screeningScore * 0.85 + 15),
+    riskFlags,
+    recommendation,
+  }
+}
+
+export async function submitAiScreeningAssessment(applicantId, answers) {
+  if (!isSupabaseConfigured) {
+    throw new Error('Supabase is not configured.')
+  }
+
+  const now = new Date().toISOString()
+  const scores = scoreAssessmentAnswers(answers)
+  const answerRows = Object.entries(answers).map(([question, answer]) => ({
+    applicant_id: applicantId,
+    question,
+    answer,
+    category: 'ai_assessment',
+  }))
+  const aiSummary = `${scores.recommendation} based on submitted AI screening responses. Candidate responses show role-fit, professionalism, communication, and availability signals for HR review.`
+
+  const operations = [
+    supabase.from('screening_answers').insert(answerRows),
+    supabase
+      .from('ai_screening_tasks')
+      .update({
+        task_status: 'completed',
+        candidate_context: { answers },
+        ai_summary: aiSummary,
+        role_fit_score: scores.roleFitScore,
+        professionalism_score: scores.professionalismScore,
+        communication_score: scores.communicationScore,
+        availability_score: scores.availabilityScore,
+        risk_flags: scores.riskFlags,
+        recommendation: scores.recommendation,
+        completed_at: now,
+        updated_at: now,
+      })
+      .eq('applicant_id', applicantId)
+      .in('task_status', ['queued', 'running', 'completed']),
+    supabase
+      .from('candidate_scores')
+      .upsert({
+        applicant_id: applicantId,
+        screening_score: scores.screeningScore,
+        overall_candidate_score: scores.overallCandidateScore,
+        updated_at: now,
+      }, { onConflict: 'applicant_id' }),
+    supabase
+      .from('ai_recommendations')
+      .upsert({
+        applicant_id: applicantId,
+        recommendation: scores.recommendation,
+        confidence: scores.screeningScore,
+        summary: aiSummary,
+        risk_flags: scores.riskFlags,
+        updated_at: now,
+      }, { onConflict: 'applicant_id' }),
+    supabase
+      .from('automation_jobs')
+      .update({
+        job_status: 'completed',
+        last_error: null,
+        updated_at: now,
+      })
+      .eq('applicant_id', applicantId)
+      .eq('job_type', 'evaluate_ai_assessment')
+      .in('job_status', ['queued', 'running']),
+    supabase
+      .from('applicants')
+      .update({
+        current_stage: 'Assessment Completed',
+        status: scores.recommendation === 'Needs Review' ? 'Needs Review' : 'Qualified',
+        updated_at: now,
+      })
+      .eq('id', applicantId),
+    supabase
+      .from('pipeline_stage_history')
+      .insert({
+        applicant_id: applicantId,
+        from_stage: 'New Applicant',
+        to_stage: 'Assessment Completed',
+        changed_by: 'ai_screening_page',
+        reason: 'Applicant completed AI screening assessment.',
+      }),
+    supabase
+      .from('automation_events')
+      .insert({
+        applicant_id: applicantId,
+        event_type: 'ai_screening_completed',
+        event_status: 'complete',
+        event_label: 'AI Screening Completed',
+        metadata: {
+          description: 'Applicant completed the AI screening assessment form.',
+          scores,
+        },
+      }),
+  ]
+
+  const results = await Promise.all(operations)
+  const operationError = results.find((result) => result.error)?.error
+  if (operationError) throw operationError
+
+  return {
+    ok: true,
+    scores,
+    summary: aiSummary,
+  }
+}
+
 export async function fetchAutomationQueueSummary() {
   if (!isSupabaseConfigured) return []
 
@@ -1211,6 +1393,8 @@ function notificationRows(applicantId, application, automationJobs = []) {
 
   const scheduledNow = new Date().toISOString()
   const aiAssessmentScheduledFor = new Date(Date.now() + 5 * 60 * 1000).toISOString()
+  const appOrigin = typeof window !== 'undefined' ? window.location.origin : ''
+  const assessmentUrl = appOrigin ? `${appOrigin}/screening/${applicantId}` : `/screening/${applicantId}`
 
   return [
     {
@@ -1240,10 +1424,10 @@ function notificationRows(applicantId, application, automationJobs = []) {
       channel: 'email',
       recipient: application.email,
       subject: 'Complete your ViankaX screening assessment',
-      message: 'Please complete your AI screening assessment so the hiring team can continue reviewing your application.',
+      message: `Please complete your AI screening assessment so the hiring team can continue reviewing your application: ${assessmentUrl}`,
       notification_status: 'queued',
       scheduled_for: aiAssessmentScheduledFor,
-      metadata: { template: 'ai_assessment_invite' },
+      metadata: { template: 'ai_assessment_invite', assessmentUrl },
     },
   ]
 }
