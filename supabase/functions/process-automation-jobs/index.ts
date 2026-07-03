@@ -343,6 +343,94 @@ async function applyPlaceholderJobEffects(supabase: ReturnType<typeof createClie
     )
   }
 
+  if (job.job_type === 'voice_interview_analysis') {
+    const voiceScore = 88
+    effects.push(
+      supabase
+        .from('voice_interviews')
+        .insert({
+          applicant_id: job.applicant_id,
+          provider: 'voice_ai_placeholder',
+          recording_url: 'https://example.com/voice-interview-placeholder',
+          transcript: 'Placeholder voice interview completed. Candidate communicated clearly, confirmed availability, and gave professional responses suitable for final HR review.',
+          score: voiceScore,
+          recommendation: 'Proceed to final in-person interview',
+          status: 'Complete',
+          completed_at: now,
+        }),
+    )
+    effects.push(
+      supabase
+        .from('candidate_scores')
+        .update({
+          voice_interview_score: voiceScore,
+          overall_candidate_score: voiceScore,
+          updated_at: now,
+        })
+        .eq('applicant_id', job.applicant_id),
+    )
+    effects.push(
+      supabase
+        .from('applicants')
+        .update({
+          current_stage: 'Voice Interview Complete',
+          interview_status: 'Complete',
+          status: 'Qualified',
+          updated_at: now,
+        })
+        .eq('id', job.applicant_id),
+    )
+    effects.push(
+      supabase
+        .from('pipeline_stage_history')
+        .insert({
+          applicant_id: job.applicant_id,
+          from_stage: job.applicants?.current_stage ?? null,
+          to_stage: 'Voice Interview Complete',
+          changed_by: 'edge_function_processor',
+          reason: 'Placeholder voice interview analysis completed automatically.',
+        }),
+    )
+  }
+
+  if (job.job_type === 'send_scheduling_link') {
+    const scheduledFor = new Date(Date.now() + 3 * 24 * 60 * 60 * 1000).toISOString()
+    effects.push(
+      supabase
+        .from('interview_schedules')
+        .insert({
+          applicant_id: job.applicant_id,
+          provider: 'calendar_placeholder',
+          scheduled_for: scheduledFor,
+          scheduling_url: 'https://cal.com/viankax/final-interview-placeholder',
+          status: 'Scheduled',
+          updated_at: now,
+        }),
+    )
+    effects.push(
+      supabase
+        .from('applicants')
+        .update({
+          current_stage: 'Interview Scheduled',
+          interview_status: 'Scheduled',
+          status: 'Qualified',
+          updated_at: now,
+        })
+        .eq('id', job.applicant_id),
+    )
+    effects.push(
+      supabase
+        .from('pipeline_stage_history')
+        .insert({
+          applicant_id: job.applicant_id,
+          from_stage: job.applicants?.current_stage ?? null,
+          to_stage: 'Interview Scheduled',
+          changed_by: 'edge_function_processor',
+          reason: 'Final in-person interview was scheduled automatically.',
+        }),
+    )
+  }
+
   effects.push(supabase.from('automation_events').insert(processedEventForJob(job, provider)))
 
   const results = await Promise.all(effects)
@@ -377,7 +465,7 @@ async function deferAiAssessmentEvaluation(supabase: ReturnType<typeof createCli
   if (error) throw error
   await updateWorkflowAfterJob(supabase, job.workflow_run_id)
 
-  return jsonResponse({
+  return {
     processed: false,
     message: 'AI screening evaluation is waiting for applicant answers. The job was deferred.',
     job: {
@@ -388,7 +476,36 @@ async function deferAiAssessmentEvaluation(supabase: ReturnType<typeof createCli
       scheduledFor: nextCheckAt,
       applicantName: job.applicants?.full_name ?? 'Unknown applicant',
     },
-  })
+  }
+}
+
+async function deferAutomationJob(supabase: ReturnType<typeof createClient>, job: AutomationJob, reason: string) {
+  const nextCheckAt = new Date(Date.now() + 10 * 60 * 1000).toISOString()
+  const { error } = await supabase
+    .from('automation_jobs')
+    .update({
+      job_status: 'queued',
+      scheduled_for: nextCheckAt,
+      last_error: reason,
+      updated_at: new Date().toISOString(),
+    })
+    .eq('id', job.id)
+
+  if (error) throw error
+  await updateWorkflowAfterJob(supabase, job.workflow_run_id)
+
+  return {
+    processed: false,
+    message: `${job.job_label} is waiting. ${reason}`,
+    job: {
+      id: job.id,
+      type: job.job_type,
+      label: job.job_label,
+      status: 'queued',
+      scheduledFor: nextCheckAt,
+      applicantName: job.applicants?.full_name ?? 'Unknown applicant',
+    },
+  }
 }
 
 async function processOrphanedEmailNotification(supabase: ReturnType<typeof createClient>) {
@@ -468,90 +585,118 @@ Deno.serve(async (request) => {
     }
 
     const supabase = createClient(supabaseUrl, serviceRoleKey)
-    const now = new Date().toISOString()
-    const { data: jobs, error: jobError } = await supabase
-      .from('automation_jobs')
-      .select(`
-        id,
-        applicant_id,
-        workflow_run_id,
-        job_type,
-        job_label,
-        job_status,
-        priority,
-        scheduled_for,
-        attempts,
-        last_error,
-        payload,
-        applicants(full_name, current_stage, jobs(title))
-      `)
-      .eq('job_status', 'queued')
-      .lte('scheduled_for', now)
-      .order('priority', { ascending: true })
-      .order('scheduled_for', { ascending: true })
-      .limit(1)
+    const body = await request.json().catch(() => ({}))
+    const maxJobs = Math.min(Math.max(Number(body?.maxJobs ?? 10), 1), 25)
+    const processedJobs: Array<Record<string, unknown>> = []
+    const deferredJobs: Array<Record<string, unknown>> = []
 
-    if (jobError) throw jobError
-    const job = jobs?.[0] as AutomationJob | undefined
+    for (let index = 0; index < maxJobs; index += 1) {
+      const now = new Date().toISOString()
+      const { data: jobs, error: jobError } = await supabase
+        .from('automation_jobs')
+        .select(`
+          id,
+          applicant_id,
+          workflow_run_id,
+          job_type,
+          job_label,
+          job_status,
+          priority,
+          scheduled_for,
+          attempts,
+          last_error,
+          payload,
+          applicants(full_name, current_stage, jobs(title))
+        `)
+        .eq('job_status', 'queued')
+        .lte('scheduled_for', now)
+        .order('priority', { ascending: true })
+        .order('scheduled_for', { ascending: true })
+        .limit(1)
 
-    if (!job) {
-      return processOrphanedEmailNotification(supabase)
-    }
+      if (jobError) throw jobError
+      const job = jobs?.[0] as AutomationJob | undefined
 
-    if (job.job_type === 'evaluate_ai_assessment' && !(await hasSubmittedAiAssessment(supabase, job.applicant_id))) {
-      return deferAiAssessmentEvaluation(supabase, job)
-    }
+      if (!job) {
+        if (!processedJobs.length && !deferredJobs.length) {
+          return processOrphanedEmailNotification(supabase)
+        }
+        break
+      }
 
-    const { error: runningError } = await supabase
-      .from('automation_jobs')
-      .update({
-        job_status: 'running',
-        attempts: (job.attempts ?? 0) + 1,
-        updated_at: now,
-      })
-      .eq('id', job.id)
+      if (job.job_type === 'evaluate_ai_assessment' && !(await hasSubmittedAiAssessment(supabase, job.applicant_id))) {
+        deferredJobs.push(await deferAiAssessmentEvaluation(supabase, job))
+        continue
+      }
 
-    if (runningError) throw runningError
+      if (
+        ['voice_interview_analysis', 'send_scheduling_link'].includes(job.job_type) &&
+        !(await hasSubmittedAiAssessment(supabase, job.applicant_id))
+      ) {
+        deferredJobs.push(await deferAutomationJob(supabase, job, 'Waiting for applicant to complete AI screening assessment.'))
+        continue
+      }
 
-    try {
-      await applyPlaceholderJobEffects(supabase, job)
-
-      const { error: completedError } = await supabase
+      const { error: runningError } = await supabase
         .from('automation_jobs')
         .update({
-          job_status: 'completed',
-          last_error: null,
-          updated_at: new Date().toISOString(),
+          job_status: 'running',
+          attempts: (job.attempts ?? 0) + 1,
+          updated_at: now,
         })
         .eq('id', job.id)
 
-      if (completedError) throw completedError
-      await updateWorkflowAfterJob(supabase, job.workflow_run_id)
+      if (runningError) throw runningError
 
-      return jsonResponse({
-        processed: true,
-        message: `${job.job_label} processed by Edge Function.`,
-        job: {
+      try {
+        await applyPlaceholderJobEffects(supabase, job)
+
+        const { error: completedError } = await supabase
+          .from('automation_jobs')
+          .update({
+            job_status: 'completed',
+            last_error: null,
+            updated_at: new Date().toISOString(),
+          })
+          .eq('id', job.id)
+
+        if (completedError) throw completedError
+        await updateWorkflowAfterJob(supabase, job.workflow_run_id)
+
+        processedJobs.push({
           id: job.id,
           type: job.job_type,
           label: job.job_label,
           status: 'completed',
           applicantName: job.applicants?.full_name ?? 'Unknown applicant',
-        },
-      })
-    } catch (processError) {
-      await supabase
-        .from('automation_jobs')
-        .update({
-          job_status: 'failed',
-          last_error: errorMessage(processError),
-          updated_at: new Date().toISOString(),
         })
-        .eq('id', job.id)
+      } catch (processError) {
+        await supabase
+          .from('automation_jobs')
+          .update({
+            job_status: 'failed',
+            last_error: errorMessage(processError),
+            updated_at: new Date().toISOString(),
+          })
+          .eq('id', job.id)
 
-      await updateWorkflowAfterJob(supabase, job.workflow_run_id)
-      throw processError
+        await updateWorkflowAfterJob(supabase, job.workflow_run_id)
+        throw processError
+      }
     }
+
+    return jsonResponse({
+      processed: processedJobs.length > 0,
+      processedCount: processedJobs.length,
+      deferredCount: deferredJobs.length,
+      message: processedJobs.length
+        ? `Processed ${processedJobs.length} automation job${processedJobs.length === 1 ? '' : 's'}.`
+        : deferredJobs.length
+          ? `Deferred ${deferredJobs.length} automation job${deferredJobs.length === 1 ? '' : 's'} waiting for applicant action.`
+          : 'No queued automation jobs are ready.',
+      jobs: processedJobs,
+      deferredJobs,
+    })
   } catch (error) {
     return jsonResponse({ processed: false, error: errorMessage(error) }, 500)
   }

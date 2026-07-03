@@ -150,6 +150,8 @@ function ApplicationStatusPage() {
             <p><span className="font-semibold text-[#111827]">Job:</span> {application.jobTitle || application.role}</p>
             <p><span className="font-semibold text-[#111827]">Client:</span> {application.client}</p>
             <p><span className="font-semibold text-[#111827]">Stage:</span> {application.stage}</p>
+            <p><span className="font-semibold text-[#111827]">Voice interview:</span> {application.interviewStatus}</p>
+            <p><span className="font-semibold text-[#111827]">Final interview:</span> {application.interviewTime}</p>
             <p><span className="font-semibold text-[#111827]">Submitted:</span> {application.appliedAt || 'Recently submitted'}</p>
           </div>
           <div

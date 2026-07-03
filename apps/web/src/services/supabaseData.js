@@ -1299,6 +1299,94 @@ async function applyPlaceholderJobEffects(job) {
     )
   }
 
+  if (job.job_type === 'voice_interview_analysis') {
+    const voiceScore = 88
+    effects.push(
+      supabase
+        .from('voice_interviews')
+        .insert({
+          applicant_id: job.applicant_id,
+          provider: 'voice_ai_placeholder',
+          recording_url: 'https://example.com/voice-interview-placeholder',
+          transcript: 'Placeholder voice interview completed. Candidate communicated clearly, confirmed availability, and gave professional responses suitable for final HR review.',
+          score: voiceScore,
+          recommendation: 'Proceed to final in-person interview',
+          status: 'Complete',
+          completed_at: now,
+        }),
+    )
+    effects.push(
+      supabase
+        .from('candidate_scores')
+        .update({
+          voice_interview_score: voiceScore,
+          overall_candidate_score: voiceScore,
+          updated_at: now,
+        })
+        .eq('applicant_id', job.applicant_id),
+    )
+    effects.push(
+      supabase
+        .from('applicants')
+        .update({
+          current_stage: 'Voice Interview Complete',
+          interview_status: 'Complete',
+          status: 'Qualified',
+          updated_at: now,
+        })
+        .eq('id', job.applicant_id),
+    )
+    effects.push(
+      supabase
+        .from('pipeline_stage_history')
+        .insert({
+          applicant_id: job.applicant_id,
+          from_stage: job.applicants?.current_stage ?? null,
+          to_stage: 'Voice Interview Complete',
+          changed_by: 'automation_processor',
+          reason: 'Placeholder voice interview analysis completed automatically.',
+        }),
+    )
+  }
+
+  if (job.job_type === 'send_scheduling_link') {
+    const scheduledFor = new Date(Date.now() + 3 * 24 * 60 * 60 * 1000).toISOString()
+    effects.push(
+      supabase
+        .from('interview_schedules')
+        .insert({
+          applicant_id: job.applicant_id,
+          provider: 'calendar_placeholder',
+          scheduled_for: scheduledFor,
+          scheduling_url: 'https://cal.com/viankax/final-interview-placeholder',
+          status: 'Scheduled',
+          updated_at: now,
+        }),
+    )
+    effects.push(
+      supabase
+        .from('applicants')
+        .update({
+          current_stage: 'Interview Scheduled',
+          interview_status: 'Scheduled',
+          status: 'Qualified',
+          updated_at: now,
+        })
+        .eq('id', job.applicant_id),
+    )
+    effects.push(
+      supabase
+        .from('pipeline_stage_history')
+        .insert({
+          applicant_id: job.applicant_id,
+          from_stage: job.applicants?.current_stage ?? null,
+          to_stage: 'Interview Scheduled',
+          changed_by: 'automation_processor',
+          reason: 'Final in-person interview was scheduled automatically.',
+        }),
+    )
+  }
+
   effects.push(supabase.from('automation_events').insert(processedEventForJob(job)))
 
   const results = await Promise.all(effects)
@@ -1337,6 +1425,28 @@ async function deferAiAssessmentEvaluation(job) {
     processed: false,
     job: mapAutomationQueueJob({ ...job, job_status: 'queued', scheduled_for: nextCheckAt }),
     message: 'AI screening evaluation is waiting for applicant answers. The job was deferred.',
+  }
+}
+
+async function deferAutomationJob(job, reason) {
+  const nextCheckAt = new Date(Date.now() + 10 * 60 * 1000).toISOString()
+  const { error } = await supabase
+    .from('automation_jobs')
+    .update({
+      job_status: 'queued',
+      scheduled_for: nextCheckAt,
+      last_error: reason,
+      updated_at: new Date().toISOString(),
+    })
+    .eq('id', job.id)
+
+  if (error) throw error
+  await updateWorkflowAfterJob(job.workflow_run_id)
+
+  return {
+    processed: false,
+    job: mapAutomationQueueJob({ ...job, job_status: 'queued', scheduled_for: nextCheckAt }),
+    message: `${job.job_label} is waiting. ${reason}`,
   }
 }
 
@@ -1441,6 +1551,13 @@ async function processNextAutomationJobLocally() {
     return deferAiAssessmentEvaluation(job)
   }
 
+  if (
+    ['voice_interview_analysis', 'send_scheduling_link'].includes(job.job_type) &&
+    !(await hasSubmittedAiAssessment(job.applicant_id))
+  ) {
+    return deferAutomationJob(job, 'Waiting for applicant to complete AI screening assessment.')
+  }
+
   const now = new Date().toISOString()
   const { error: runningError } = await supabase
     .from('automation_jobs')
@@ -1490,7 +1607,7 @@ async function processNextAutomationJobLocally() {
 
 async function processNextAutomationJobWithEdgeFunction() {
   const { data, error } = await supabase.functions.invoke('process-automation-jobs', {
-    body: { mode: 'process-next' },
+    body: { mode: 'manual-debug-run', maxJobs: 10 },
   })
 
   if (error) throw error
@@ -1499,7 +1616,9 @@ async function processNextAutomationJobWithEdgeFunction() {
   return {
     processed: Boolean(data?.processed),
     message: data?.message ?? 'Automation function completed.',
-    job: data?.job ?? null,
+    job: data?.job ?? data?.jobs?.[0] ?? data?.deferredJobs?.[0]?.job ?? null,
+    jobs: data?.jobs ?? [],
+    deferredJobs: data?.deferredJobs ?? [],
     source: 'edge-function',
   }
 }
@@ -1633,6 +1752,26 @@ function automationJobRows(applicantId, workflowRunId, application, uploadedDocu
       priority: 3,
       scheduled_for: scheduledNow,
       payload: { licenseUploaded: Boolean(uploadedDocuments.guardCard) },
+    },
+    {
+      applicant_id: applicantId,
+      workflow_run_id: workflowRunId,
+      job_type: 'voice_interview_analysis',
+      job_label: 'Analyze voice interview',
+      job_status: 'queued',
+      priority: 6,
+      scheduled_for: scheduledNow,
+      payload: { provider: 'voice_ai_placeholder', mode: 'automated_voice_screening' },
+    },
+    {
+      applicant_id: applicantId,
+      workflow_run_id: workflowRunId,
+      job_type: 'send_scheduling_link',
+      job_label: 'Schedule final in-person interview',
+      job_status: 'queued',
+      priority: 7,
+      scheduled_for: scheduledNow,
+      payload: { provider: 'calendar_placeholder', mode: 'auto_schedule_final_interview' },
     },
   ]
 }
