@@ -12,7 +12,14 @@ select
   'https://cal.com/viankax/final-interview-placeholder',
   'Scheduled'
 from applicants
-where applicants.current_stage = 'Interview Scheduled'
+where (
+    applicants.current_stage in ('Interview Scheduled', 'Ready for Review')
+    or exists (
+      select 1
+      from placement_matches
+      where placement_matches.applicant_id = applicants.id
+    )
+  )
   and not exists (
     select 1
     from interview_schedules
@@ -23,5 +30,12 @@ update applicants
 set
   interview_status = 'Scheduled',
   updated_at = now()
-where current_stage = 'Interview Scheduled'
+where (
+    current_stage in ('Interview Scheduled', 'Ready for Review')
+    or exists (
+      select 1
+      from placement_matches
+      where placement_matches.applicant_id = applicants.id
+    )
+  )
   and coalesce(interview_status, '') <> 'Scheduled';

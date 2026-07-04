@@ -296,6 +296,9 @@ function mapApplicant(row) {
   const recommendation = row.ai_recommendations?.[0] ?? {}
   const voiceInterview = row.voice_interviews?.[0] ?? {}
   const interviewSchedule = row.interview_schedules?.[0] ?? {}
+  const hasScheduledInterview =
+    row.interview_status === 'Scheduled' ||
+    ['Interview Scheduled', 'Ready for Review'].includes(row.current_stage)
   const placementMatches = mapPlacementMatches(row.placement_matches)
   const job = row.jobs ?? {}
   const client = row.clients ?? job.clients ?? {}
@@ -381,7 +384,7 @@ function mapApplicant(row) {
       recommendation: voiceInterview.recommendation ?? 'Wait for screening and document review.',
     },
     finalInterview: {
-      status: interviewSchedule.status ?? (row.current_stage === 'Interview Scheduled' ? 'Scheduled' : 'Not Scheduled'),
+      status: interviewSchedule.status ?? (hasScheduledInterview ? 'Scheduled' : 'Not Scheduled'),
       scheduledFor: interviewSchedule.scheduled_for ?? null,
       schedulingUrl: interviewSchedule.scheduling_url ?? null,
       provider: interviewSchedule.provider ?? null,
@@ -411,7 +414,7 @@ function mapApplicant(row) {
         hour: 'numeric',
         minute: '2-digit',
       }).format(new Date(interviewSchedule.scheduled_for))
-      : row.current_stage === 'Interview Scheduled'
+      : hasScheduledInterview
         ? 'Scheduled - date/time pending sync'
       : 'Not scheduled',
     notes: row.notes ?? 'No notes recorded yet.',
