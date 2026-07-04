@@ -256,6 +256,11 @@ create table if not exists interview_schedules (
   provider text,
   scheduled_for timestamptz,
   scheduling_url text,
+  external_calendar_provider text,
+  external_event_id text,
+  sync_status text not null default 'Not Connected',
+  sync_error text,
+  synced_at timestamptz,
   status text not null default 'Not Scheduled',
   created_at timestamptz not null default now(),
   updated_at timestamptz not null default now()

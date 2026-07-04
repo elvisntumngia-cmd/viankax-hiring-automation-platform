@@ -388,6 +388,10 @@ function mapApplicant(row) {
       scheduledFor: interviewSchedule.scheduled_for ?? null,
       schedulingUrl: interviewSchedule.scheduling_url ?? null,
       provider: interviewSchedule.provider ?? null,
+      externalCalendarProvider: interviewSchedule.external_calendar_provider ?? null,
+      externalEventId: interviewSchedule.external_event_id ?? null,
+      syncStatus: interviewSchedule.sync_status ?? 'Not Connected',
+      syncError: interviewSchedule.sync_error ?? null,
     },
     placementMatches,
     placementRecommendation: placementMatches.length
