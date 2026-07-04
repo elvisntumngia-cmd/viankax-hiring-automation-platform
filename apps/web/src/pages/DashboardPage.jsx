@@ -21,6 +21,15 @@ function DashboardPage() {
   const pendingInterviews = applicants.filter((applicant) => matchesPipelinePreset(applicant, 'pending-interviews')).length
   const strongCandidates = applicants.filter((applicant) => matchesPipelinePreset(applicant, 'strong-candidates')).length
   const recentActivity = getRecentApplicantActivity(applicants)
+  const upcomingFinalInterviews = applicants
+    .filter((applicant) => applicant.finalInterview?.status === 'Scheduled' || applicant.interviewStatus === 'Scheduled')
+    .sort((first, second) => {
+      const firstTime = first.finalInterview?.scheduledFor ? new Date(first.finalInterview.scheduledFor).getTime() : Number.MAX_SAFE_INTEGER
+      const secondTime = second.finalInterview?.scheduledFor ? new Date(second.finalInterview.scheduledFor).getTime() : Number.MAX_SAFE_INTEGER
+
+      return firstTime - secondTime
+    })
+    .slice(0, 5)
   const metricCards = [
     ['New Applicant', applicants.filter((applicant) => matchesPipelinePreset(applicant, 'new-applicant')).length, 'from active campaigns', 'from-slate-800 to-slate-900', UserPlus, 'new-applicant'],
     ['Pending AI Review', pendingAiReview, 'resume and screening automation', 'from-violet-900 to-violet-700', Brain, 'pending-ai-review'],
@@ -192,6 +201,64 @@ function DashboardPage() {
       <div className="mt-6 sm:mt-8">
         <AutomationRunHistoryPanel history={automationHistory} />
       </div>
+
+      <section className="mt-6 rounded-lg border border-white/[0.10] bg-[#0B111C] p-5 shadow-2xl shadow-black/25 sm:mt-8">
+        <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+          <div>
+            <h2 className="text-lg font-semibold text-white">Upcoming final interviews</h2>
+            <p className="mt-2 text-sm text-zinc-400">
+              Calendar-ready candidates who completed the automated screening path.
+            </p>
+          </div>
+          <Link
+            to="/dashboard/applicants?filter=ready-placement-review"
+            className="inline-flex w-fit items-center gap-2 rounded-md border border-white/[0.10] px-3 py-2 text-sm font-semibold text-white hover:border-[#0084FF] hover:text-[#0084FF]"
+          >
+            Review placements <ArrowRight size={15} />
+          </Link>
+        </div>
+
+        <div className="mt-5 grid gap-3">
+          {upcomingFinalInterviews.map((applicant) => (
+            <Link
+              key={applicant.id}
+              to={`/dashboard/applicants/${applicant.id}`}
+              className="grid gap-3 rounded-lg border border-white/[0.08] bg-[#080D14] p-4 transition hover:border-[#0084FF]/60 sm:grid-cols-[minmax(0,1fr)_180px_140px] sm:items-center"
+            >
+              <div className="min-w-0">
+                <p className="font-semibold text-white">{applicant.name}</p>
+                <p className="mt-1 text-sm text-zinc-400">{applicant.role}</p>
+                <p className="mt-1 text-xs font-semibold text-blue-300">
+                  {applicant.placementRecommendation?.bestMatch ?? 'Placement match pending'}
+                </p>
+              </div>
+              <div>
+                <p className="text-xs font-semibold uppercase tracking-wide text-zinc-500">Date/time</p>
+                <p className="mt-1 text-sm font-semibold text-zinc-100">{applicant.interviewTime}</p>
+              </div>
+              <div className="flex items-center justify-between gap-3 sm:block">
+                <div>
+                  <p className="text-xs font-semibold uppercase tracking-wide text-zinc-500">Match score</p>
+                  <p className="mt-1 text-sm font-semibold text-emerald-300">
+                    {Number.isFinite(applicant.placementRecommendation?.matchScore)
+                      ? `${applicant.placementRecommendation.matchScore}%`
+                      : 'Pending'}
+                  </p>
+                </div>
+                <span className="rounded-md bg-blue-500/15 px-3 py-1 text-xs font-semibold text-blue-300 sm:mt-3 sm:inline-flex">
+                  {applicant.finalInterview?.provider ?? 'Calendar placeholder'}
+                </span>
+              </div>
+            </Link>
+          ))}
+
+          {upcomingFinalInterviews.length === 0 ? (
+            <div className="rounded-lg border border-white/[0.08] bg-[#080D14] p-5 text-sm text-zinc-400">
+              No final interviews are scheduled yet. Completed automation will populate this list after scheduling.
+            </div>
+          ) : null}
+        </div>
+      </section>
     </section>
   )
 }
