@@ -4,7 +4,7 @@ import { Link } from 'react-router-dom'
 import PageHeader from '../components/PageHeader'
 import { applicants as dummyApplicants } from '../data/dummyApplicants'
 import useSupabaseData from '../hooks/useSupabaseData'
-import { fetchApplicants } from '../services/supabaseData'
+import { defaultCalendarSettings, fetchApplicants, fetchCalendarSettings, saveCalendarSettings } from '../services/supabaseData'
 import { getStoredApplications } from '../utils/applicationStorage'
 import { getCandidateScores } from '../utils/candidateInsights'
 
@@ -40,21 +40,46 @@ function getSyncBadge(interview) {
 function DashboardCalendarPage() {
   const [searchQuery, setSearchQuery] = useState('')
   const [providerFilter, setProviderFilter] = useState('All Providers')
-  const [calendarSettings, setCalendarSettings] = useState({
-    provider: 'Internal calendar',
-    interviewerEmail: 'hr@viankax.com',
-    interviewDuration: '30',
-    bufferTime: '15',
-    schedulingWindow: '3 business days after voice interview',
-  })
+  const [calendarSettingsDraft, setCalendarSettingsDraft] = useState(null)
+  const [settingsState, setSettingsState] = useState({ busy: false, message: '', error: '' })
   const { data: backendApplicants, status, error } = useSupabaseData(fetchApplicants, dummyApplicants)
+  const {
+    data: savedCalendarSettings,
+    status: settingsStatus,
+    error: settingsError,
+    reload: reloadCalendarSettings,
+  } = useSupabaseData(fetchCalendarSettings, defaultCalendarSettings)
   const applicants = useMemo(() => [...backendApplicants, ...getStoredApplications()], [backendApplicants])
+  const calendarSettings = calendarSettingsDraft ?? savedCalendarSettings
 
   function updateCalendarSetting(key, value) {
-    setCalendarSettings((current) => ({
-      ...current,
+    setCalendarSettingsDraft((current) => ({
+      ...(current ?? calendarSettings),
       [key]: value,
     }))
+  }
+
+  async function handleSaveCalendarSettings() {
+    setSettingsState({ busy: true, message: '', error: '' })
+
+    try {
+      const savedSettings = await saveCalendarSettings(calendarSettings)
+      setCalendarSettingsDraft(savedSettings)
+      await reloadCalendarSettings()
+      setSettingsState({
+        busy: false,
+        message: 'Calendar settings saved.',
+        error: '',
+      })
+    } catch (saveError) {
+      setSettingsState({
+        busy: false,
+        message: '',
+        error: saveError.message?.includes('calendar_settings')
+          ? 'Calendar settings table is not ready. Run docs/supabase-calendar-settings.sql in Supabase, then save again.'
+          : saveError.message,
+      })
+    }
   }
 
   const scheduledApplicants = useMemo(() => applicants
@@ -233,9 +258,36 @@ function DashboardCalendarPage() {
             </label>
           </div>
 
-          <div className="mt-5 rounded-lg border border-amber-400/20 bg-amber-500/10 p-4 text-sm text-amber-100">
-            Settings are staged in the UI for now. The next backend pass will persist them to Supabase and use them when creating Google or Microsoft calendar events.
+          <div className="mt-5 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+            <div className="text-sm text-zinc-400">
+              {settingsStatus === 'loading' ? 'Loading saved settings...' : 'Settings are saved to Supabase when the calendar settings table is installed.'}
+              {settingsError ? (
+                <span className="block text-amber-200">
+                  Using defaults until the settings table is available.
+                </span>
+              ) : null}
+            </div>
+            <button
+              type="button"
+              onClick={handleSaveCalendarSettings}
+              disabled={settingsState.busy}
+              className="inline-flex w-fit items-center justify-center rounded-md bg-[#0084FF] px-4 py-2 text-sm font-semibold text-white hover:bg-blue-500 disabled:cursor-wait disabled:opacity-70"
+            >
+              {settingsState.busy ? 'Saving...' : 'Save settings'}
+            </button>
           </div>
+
+          {settingsState.message ? (
+            <div className="mt-4 rounded-lg border border-emerald-400/30 bg-emerald-500/10 p-4 text-sm font-semibold text-emerald-200">
+              {settingsState.message}
+            </div>
+          ) : null}
+
+          {settingsState.error ? (
+            <div className="mt-4 rounded-lg border border-amber-400/30 bg-amber-500/10 p-4 text-sm font-semibold text-amber-200">
+              {settingsState.error}
+            </div>
+          ) : null}
         </div>
 
         <aside className="rounded-lg border border-white/[0.10] bg-[#0B111C] p-4 sm:p-5">

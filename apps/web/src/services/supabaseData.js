@@ -13,6 +13,26 @@ const pipelineStages = [
   'Rejected',
 ]
 
+export const defaultCalendarSettings = {
+  provider: 'Internal calendar',
+  interviewerEmail: 'hr@viankax.com',
+  interviewDuration: '30',
+  bufferTime: '15',
+  schedulingWindow: '3 business days after voice interview',
+}
+
+function mapCalendarSettings(row) {
+  if (!row) return defaultCalendarSettings
+
+  return {
+    provider: row.provider ?? defaultCalendarSettings.provider,
+    interviewerEmail: row.interviewer_email ?? defaultCalendarSettings.interviewerEmail,
+    interviewDuration: String(row.interview_duration_minutes ?? defaultCalendarSettings.interviewDuration),
+    bufferTime: String(row.buffer_minutes ?? defaultCalendarSettings.bufferTime),
+    schedulingWindow: row.scheduling_window ?? defaultCalendarSettings.schedulingWindow,
+  }
+}
+
 function mapJob(row) {
   return {
     id: row.id,
@@ -485,6 +505,50 @@ export async function fetchOpenShifts() {
 
   if (error) throw error
   return data.map(mapOpenShift)
+}
+
+export async function fetchCalendarSettings() {
+  if (!isSupabaseConfigured) return defaultCalendarSettings
+
+  const { data, error } = await supabase
+    .from('calendar_settings')
+    .select('*')
+    .eq('settings_key', 'default')
+    .maybeSingle()
+
+  if (error) {
+    if (error.code === '42P01' || error.message?.includes('calendar_settings')) {
+      return defaultCalendarSettings
+    }
+
+    throw error
+  }
+
+  return mapCalendarSettings(data)
+}
+
+export async function saveCalendarSettings(settings) {
+  const row = {
+    settings_key: 'default',
+    provider: settings.provider,
+    interviewer_email: settings.interviewerEmail,
+    interview_duration_minutes: Number(settings.interviewDuration),
+    buffer_minutes: Number(settings.bufferTime),
+    scheduling_window: settings.schedulingWindow,
+    updated_at: new Date().toISOString(),
+  }
+
+  if (!isSupabaseConfigured) return mapCalendarSettings(row)
+
+  const { data, error } = await supabase
+    .from('calendar_settings')
+    .upsert(row, { onConflict: 'settings_key' })
+    .select('*')
+    .single()
+
+  if (error) throw error
+
+  return mapCalendarSettings(data)
 }
 
 function splitList(value) {

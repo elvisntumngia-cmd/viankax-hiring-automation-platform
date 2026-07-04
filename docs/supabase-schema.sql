@@ -266,6 +266,18 @@ create table if not exists interview_schedules (
   updated_at timestamptz not null default now()
 );
 
+create table if not exists calendar_settings (
+  id uuid primary key default gen_random_uuid(),
+  settings_key text not null default 'default',
+  provider text not null default 'Internal calendar',
+  interviewer_email text not null default 'hr@viankax.com',
+  interview_duration_minutes integer not null default 30,
+  buffer_minutes integer not null default 15,
+  scheduling_window text not null default '3 business days after voice interview',
+  created_at timestamptz not null default now(),
+  updated_at timestamptz not null default now()
+);
+
 create table if not exists placement_matches (
   id uuid primary key default gen_random_uuid(),
   applicant_id uuid not null references applicants(id) on delete cascade,
@@ -286,6 +298,7 @@ create index if not exists idx_job_sites_client_id on job_sites(client_id);
 create index if not exists idx_job_sites_status on job_sites(status);
 create index if not exists idx_open_shifts_site_id on open_shifts(site_id);
 create index if not exists idx_open_shifts_status on open_shifts(status);
+create unique index if not exists idx_calendar_settings_key on calendar_settings(settings_key);
 create index if not exists idx_jobs_site_id on jobs(site_id);
 create index if not exists idx_jobs_open_shift_id on jobs(open_shift_id);
 create index if not exists idx_applicants_job_id on applicants(job_id);
@@ -328,6 +341,7 @@ alter table notification_queue enable row level security;
 alter table pipeline_stage_history enable row level security;
 alter table voice_interviews enable row level security;
 alter table interview_schedules enable row level security;
+alter table calendar_settings enable row level security;
 alter table placement_matches enable row level security;
 
 drop policy if exists "Public can read open jobs" on jobs;
@@ -581,6 +595,22 @@ create policy "Public can create interview schedules for demo"
 drop policy if exists "Public can update interview schedules for demo" on interview_schedules;
 create policy "Public can update interview schedules for demo"
   on interview_schedules for update
+  using (true)
+  with check (true);
+
+drop policy if exists "Public can read calendar settings for demo" on calendar_settings;
+create policy "Public can read calendar settings for demo"
+  on calendar_settings for select
+  using (true);
+
+drop policy if exists "Public can create calendar settings for demo" on calendar_settings;
+create policy "Public can create calendar settings for demo"
+  on calendar_settings for insert
+  with check (true);
+
+drop policy if exists "Public can update calendar settings for demo" on calendar_settings;
+create policy "Public can update calendar settings for demo"
+  on calendar_settings for update
   using (true)
   with check (true);
 
