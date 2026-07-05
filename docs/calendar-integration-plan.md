@@ -34,6 +34,42 @@ These fields prepare `interview_schedules` for Google Calendar and Microsoft Out
 - The automation runner reads `calendar_settings`.
 - New final interviews inherit the configured provider, interviewer email, duration, buffer, and scheduling window.
 - Google/Microsoft providers are marked `Ready to sync` until OAuth/provider sync is connected.
+- Provider connection status, availability rules, reschedule/cancel actions, and sync logs are now modeled.
+
+## Remaining Real Provider Work
+
+Google and Microsoft OAuth must be implemented server-side only:
+
+- Store OAuth tokens outside frontend code.
+- Create/update/cancel provider events from Supabase Edge Functions.
+- Write provider IDs to `interview_schedules.external_event_id`.
+- Write every attempt to `calendar_sync_logs`.
+- Send candidate/interviewer invite emails after provider sync succeeds or internal scheduling is confirmed.
+
+## Calendar Invite Email Payload
+
+Future invite emails should include:
+
+- Candidate name
+- Role applied for
+- Final interview date/time
+- Interviewer email
+- Duration and buffer
+- Placement recommendation
+- Applicant profile link for HR
+- Candidate-facing confirmation text
+
+## Availability Rules
+
+The current settings support:
+
+- Business hours start/end
+- Weekend allowance
+- Max interviews per day
+- Interview duration
+- Buffer between interviews
+
+The next scheduling algorithm can use these fields before selecting a final time.
 
 ## Security Rules
 

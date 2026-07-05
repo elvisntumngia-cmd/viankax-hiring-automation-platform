@@ -19,6 +19,12 @@ export const defaultCalendarSettings = {
   interviewDuration: '30',
   bufferTime: '15',
   schedulingWindow: '3 business days after voice interview',
+  businessHoursStart: '09:00',
+  businessHoursEnd: '17:00',
+  allowWeekends: false,
+  maxInterviewsPerDay: '6',
+  googleConnectionStatus: 'Not connected',
+  microsoftConnectionStatus: 'Not connected',
 }
 
 function mapCalendarSettings(row) {
@@ -30,6 +36,12 @@ function mapCalendarSettings(row) {
     interviewDuration: String(row.interview_duration_minutes ?? defaultCalendarSettings.interviewDuration),
     bufferTime: String(row.buffer_minutes ?? defaultCalendarSettings.bufferTime),
     schedulingWindow: row.scheduling_window ?? defaultCalendarSettings.schedulingWindow,
+    businessHoursStart: row.business_hours_start ?? defaultCalendarSettings.businessHoursStart,
+    businessHoursEnd: row.business_hours_end ?? defaultCalendarSettings.businessHoursEnd,
+    allowWeekends: row.allow_weekends ?? defaultCalendarSettings.allowWeekends,
+    maxInterviewsPerDay: String(row.max_interviews_per_day ?? defaultCalendarSettings.maxInterviewsPerDay),
+    googleConnectionStatus: row.google_connection_status ?? defaultCalendarSettings.googleConnectionStatus,
+    microsoftConnectionStatus: row.microsoft_connection_status ?? defaultCalendarSettings.microsoftConnectionStatus,
   }
 }
 
@@ -601,6 +613,12 @@ export async function saveCalendarSettings(settings) {
     interview_duration_minutes: Number(settings.interviewDuration),
     buffer_minutes: Number(settings.bufferTime),
     scheduling_window: settings.schedulingWindow,
+    business_hours_start: settings.businessHoursStart,
+    business_hours_end: settings.businessHoursEnd,
+    allow_weekends: Boolean(settings.allowWeekends),
+    max_interviews_per_day: Number(settings.maxInterviewsPerDay),
+    google_connection_status: settings.googleConnectionStatus,
+    microsoft_connection_status: settings.microsoftConnectionStatus,
     updated_at: new Date().toISOString(),
   }
 
@@ -615,6 +633,38 @@ export async function saveCalendarSettings(settings) {
   if (error) throw error
 
   return mapCalendarSettings(data)
+}
+
+export async function updateInterviewSchedule(applicantId, updates) {
+  if (!isSupabaseConfigured) throw new Error('Supabase is not configured.')
+
+  const row = {
+    updated_at: new Date().toISOString(),
+  }
+
+  if (updates.status) row.status = updates.status
+  if (updates.scheduledFor) row.scheduled_for = updates.scheduledFor
+  if (updates.syncStatus) row.sync_status = updates.syncStatus
+  if (updates.syncError !== undefined) row.sync_error = updates.syncError
+
+  const { data, error } = await supabase
+    .from('interview_schedules')
+    .update(row)
+    .eq('applicant_id', applicantId)
+    .select('*')
+    .maybeSingle()
+
+  if (error) throw error
+
+  await supabase.from('calendar_sync_logs').insert({
+    applicant_id: applicantId,
+    provider: updates.provider ?? 'internal_calendar',
+    action: updates.status === 'Canceled' ? 'cancel' : updates.status === 'Rescheduled' ? 'reschedule' : 'update',
+    sync_status: updates.syncStatus ?? 'Updated',
+    message: updates.message ?? 'Interview schedule updated from HR calendar.',
+  })
+
+  return data
 }
 
 function splitList(value) {

@@ -6,9 +6,23 @@ create table if not exists calendar_settings (
   interview_duration_minutes integer not null default 30,
   buffer_minutes integer not null default 15,
   scheduling_window text not null default '3 business days after voice interview',
+  business_hours_start text not null default '09:00',
+  business_hours_end text not null default '17:00',
+  allow_weekends boolean not null default false,
+  max_interviews_per_day integer not null default 6,
+  google_connection_status text not null default 'Not connected',
+  microsoft_connection_status text not null default 'Not connected',
   created_at timestamptz not null default now(),
   updated_at timestamptz not null default now()
 );
+
+alter table calendar_settings
+  add column if not exists business_hours_start text not null default '09:00',
+  add column if not exists business_hours_end text not null default '17:00',
+  add column if not exists allow_weekends boolean not null default false,
+  add column if not exists max_interviews_per_day integer not null default 6,
+  add column if not exists google_connection_status text not null default 'Not connected',
+  add column if not exists microsoft_connection_status text not null default 'Not connected';
 
 create unique index if not exists idx_calendar_settings_key
   on calendar_settings(settings_key);

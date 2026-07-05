@@ -277,8 +277,27 @@ create table if not exists calendar_settings (
   interview_duration_minutes integer not null default 30,
   buffer_minutes integer not null default 15,
   scheduling_window text not null default '3 business days after voice interview',
+  business_hours_start text not null default '09:00',
+  business_hours_end text not null default '17:00',
+  allow_weekends boolean not null default false,
+  max_interviews_per_day integer not null default 6,
+  google_connection_status text not null default 'Not connected',
+  microsoft_connection_status text not null default 'Not connected',
   created_at timestamptz not null default now(),
   updated_at timestamptz not null default now()
+);
+
+create table if not exists calendar_sync_logs (
+  id uuid primary key default gen_random_uuid(),
+  applicant_id uuid references applicants(id) on delete set null,
+  interview_schedule_id uuid references interview_schedules(id) on delete set null,
+  provider text not null default 'internal_calendar',
+  action text not null,
+  sync_status text not null default 'Logged',
+  provider_event_id text,
+  message text,
+  error_message text,
+  created_at timestamptz not null default now()
 );
 
 create table if not exists placement_matches (
@@ -345,6 +364,7 @@ alter table pipeline_stage_history enable row level security;
 alter table voice_interviews enable row level security;
 alter table interview_schedules enable row level security;
 alter table calendar_settings enable row level security;
+alter table calendar_sync_logs enable row level security;
 alter table placement_matches enable row level security;
 
 drop policy if exists "Public can read open jobs" on jobs;
@@ -615,6 +635,16 @@ drop policy if exists "Public can update calendar settings for demo" on calendar
 create policy "Public can update calendar settings for demo"
   on calendar_settings for update
   using (true)
+  with check (true);
+
+drop policy if exists "Public can read calendar sync logs for demo" on calendar_sync_logs;
+create policy "Public can read calendar sync logs for demo"
+  on calendar_sync_logs for select
+  using (true);
+
+drop policy if exists "Public can create calendar sync logs for demo" on calendar_sync_logs;
+create policy "Public can create calendar sync logs for demo"
+  on calendar_sync_logs for insert
   with check (true);
 
 drop policy if exists "Public can read placement matches for demo" on placement_matches;

@@ -1,10 +1,10 @@
-import { CalendarCheck, CalendarDays, Clock, ExternalLink, Link as LinkIcon, Mail, RefreshCcw, Search, Settings } from 'lucide-react'
+import { Ban, CalendarCheck, CalendarDays, Clock, ExternalLink, Link as LinkIcon, Mail, RefreshCcw, RotateCcw, Search, Settings } from 'lucide-react'
 import { useMemo, useState } from 'react'
 import { Link } from 'react-router-dom'
 import PageHeader from '../components/PageHeader'
 import { applicants as dummyApplicants } from '../data/dummyApplicants'
 import useSupabaseData from '../hooks/useSupabaseData'
-import { defaultCalendarSettings, fetchApplicants, fetchCalendarSettings, saveCalendarSettings } from '../services/supabaseData'
+import { defaultCalendarSettings, fetchApplicants, fetchCalendarSettings, saveCalendarSettings, updateInterviewSchedule } from '../services/supabaseData'
 import { getStoredApplications } from '../utils/applicationStorage'
 import { getCandidateScores } from '../utils/candidateInsights'
 
@@ -42,6 +42,7 @@ function DashboardCalendarPage() {
   const [providerFilter, setProviderFilter] = useState('All Providers')
   const [calendarSettingsDraft, setCalendarSettingsDraft] = useState(null)
   const [settingsState, setSettingsState] = useState({ busy: false, message: '', error: '' })
+  const [scheduleActionState, setScheduleActionState] = useState({ busyKey: '', message: '', error: '' })
   const { data: backendApplicants, status, error } = useSupabaseData(fetchApplicants, dummyApplicants)
   const {
     data: savedCalendarSettings,
@@ -78,6 +79,42 @@ function DashboardCalendarPage() {
         error: saveError.message?.includes('calendar_settings')
           ? 'Calendar settings table is not ready. Run docs/supabase-calendar-settings.sql in Supabase, then save again.'
           : saveError.message,
+      })
+    }
+  }
+
+  async function handleScheduleAction(applicant, action) {
+    const busyKey = `${applicant.id}-${action}`
+    setScheduleActionState({ busyKey, message: '', error: '' })
+
+    try {
+      const currentDate = applicant.finalInterview?.scheduledFor
+        ? new Date(applicant.finalInterview.scheduledFor)
+        : new Date()
+      const nextDate = new Date(currentDate.getTime() + 24 * 60 * 60 * 1000)
+      const isCancel = action === 'cancel'
+
+      await updateInterviewSchedule(applicant.id, {
+        status: isCancel ? 'Canceled' : 'Rescheduled',
+        scheduledFor: isCancel ? applicant.finalInterview?.scheduledFor : nextDate.toISOString(),
+        syncStatus: isCancel ? 'Cancel Ready to Sync' : 'Update Ready to Sync',
+        provider: applicant.finalInterview?.provider,
+        message: isCancel
+          ? 'Final interview canceled from HR calendar.'
+          : 'Final interview rescheduled by one day from HR calendar.',
+      })
+      setScheduleActionState({
+        busyKey: '',
+        message: isCancel ? `${applicant.name}'s interview was canceled.` : `${applicant.name}'s interview was rescheduled.`,
+        error: '',
+      })
+    } catch (actionError) {
+      setScheduleActionState({
+        busyKey: '',
+        message: '',
+        error: actionError.message?.includes('calendar_sync_logs')
+          ? 'Schedule updated, but sync log table is not ready. Run the calendar wrap-up SQL and try again.'
+          : actionError.message,
       })
     }
   }
@@ -164,19 +201,19 @@ function DashboardCalendarPage() {
           <div className="grid gap-2 sm:grid-cols-2">
             <button
               type="button"
-              disabled
-              className="inline-flex items-center justify-center gap-2 rounded-md border border-white/[0.10] bg-white/[0.04] px-4 py-2 text-sm font-semibold text-zinc-400"
+              onClick={() => updateCalendarSetting('googleConnectionStatus', calendarSettings.googleConnectionStatus === 'Connected' ? 'Not connected' : 'Ready to connect')}
+              className="inline-flex items-center justify-center gap-2 rounded-md border border-white/[0.10] bg-white/[0.04] px-4 py-2 text-sm font-semibold text-zinc-200 hover:border-[#0084FF] hover:text-[#0084FF]"
             >
               <CalendarDays size={16} />
-              Connect Google later
+              Google: {calendarSettings.googleConnectionStatus}
             </button>
             <button
               type="button"
-              disabled
-              className="inline-flex items-center justify-center gap-2 rounded-md border border-white/[0.10] bg-white/[0.04] px-4 py-2 text-sm font-semibold text-zinc-400"
+              onClick={() => updateCalendarSetting('microsoftConnectionStatus', calendarSettings.microsoftConnectionStatus === 'Connected' ? 'Not connected' : 'Ready to connect')}
+              className="inline-flex items-center justify-center gap-2 rounded-md border border-white/[0.10] bg-white/[0.04] px-4 py-2 text-sm font-semibold text-zinc-200 hover:border-[#0084FF] hover:text-[#0084FF]"
             >
               <Mail size={16} />
-              Connect Microsoft later
+              Microsoft: {calendarSettings.microsoftConnectionStatus}
             </button>
           </div>
         </div>
@@ -256,6 +293,48 @@ function DashboardCalendarPage() {
                 className="mt-2 w-full rounded-lg border border-white/[0.10] bg-[#080D14] px-4 py-3 text-sm text-white outline-none placeholder:text-zinc-500 focus:border-[#0084FF]"
               />
             </label>
+
+            <label className="block">
+              <span className="text-sm font-semibold text-zinc-300">Business hours start</span>
+              <input
+                type="time"
+                value={calendarSettings.businessHoursStart}
+                onChange={(event) => updateCalendarSetting('businessHoursStart', event.target.value)}
+                className="mt-2 w-full rounded-lg border border-white/[0.10] bg-[#080D14] px-4 py-3 text-sm text-white outline-none focus:border-[#0084FF]"
+              />
+            </label>
+
+            <label className="block">
+              <span className="text-sm font-semibold text-zinc-300">Business hours end</span>
+              <input
+                type="time"
+                value={calendarSettings.businessHoursEnd}
+                onChange={(event) => updateCalendarSetting('businessHoursEnd', event.target.value)}
+                className="mt-2 w-full rounded-lg border border-white/[0.10] bg-[#080D14] px-4 py-3 text-sm text-white outline-none focus:border-[#0084FF]"
+              />
+            </label>
+
+            <label className="block">
+              <span className="text-sm font-semibold text-zinc-300">Max interviews per day</span>
+              <input
+                type="number"
+                min="1"
+                max="20"
+                value={calendarSettings.maxInterviewsPerDay}
+                onChange={(event) => updateCalendarSetting('maxInterviewsPerDay', event.target.value)}
+                className="mt-2 w-full rounded-lg border border-white/[0.10] bg-[#080D14] px-4 py-3 text-sm text-white outline-none focus:border-[#0084FF]"
+              />
+            </label>
+
+            <label className="flex items-center gap-3 rounded-lg border border-white/[0.10] bg-[#080D14] px-4 py-3">
+              <input
+                type="checkbox"
+                checked={calendarSettings.allowWeekends}
+                onChange={(event) => updateCalendarSetting('allowWeekends', event.target.checked)}
+                className="h-4 w-4 accent-[#0084FF]"
+              />
+              <span className="text-sm font-semibold text-zinc-300">Allow weekend interviews</span>
+            </label>
           </div>
 
           <div className="mt-5 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
@@ -317,6 +396,17 @@ function DashboardCalendarPage() {
           </div>
         </aside>
       </section>
+
+      {(scheduleActionState.message || scheduleActionState.error) ? (
+        <div className={`mt-6 rounded-lg border p-4 text-sm font-semibold ${
+          scheduleActionState.error
+            ? 'border-amber-400/30 bg-amber-500/10 text-amber-200'
+            : 'border-emerald-400/30 bg-emerald-500/10 text-emerald-200'
+        }`}
+        >
+          {scheduleActionState.error || scheduleActionState.message}
+        </div>
+      ) : null}
 
       <section className="mt-6 rounded-lg border border-white/[0.10] bg-[#0B111C] shadow-2xl shadow-black/25">
         <div className="flex flex-col gap-3 border-b border-white/[0.08] p-4 lg:flex-row lg:items-center lg:justify-between">
@@ -402,6 +492,26 @@ function DashboardCalendarPage() {
                             Open scheduling link <ExternalLink size={14} />
                           </a>
                         ) : null}
+                        <div className="mt-3 grid grid-cols-2 gap-2">
+                          <button
+                            type="button"
+                            disabled={Boolean(scheduleActionState.busyKey)}
+                            onClick={() => handleScheduleAction(applicant, 'reschedule')}
+                            className="inline-flex items-center justify-center gap-1 rounded-md border border-white/[0.10] px-2 py-2 text-xs font-semibold text-zinc-200 hover:border-[#0084FF] hover:text-[#0084FF] disabled:cursor-wait disabled:opacity-60"
+                          >
+                            <RotateCcw size={13} />
+                            {scheduleActionState.busyKey === `${applicant.id}-reschedule` ? 'Saving' : 'Reschedule'}
+                          </button>
+                          <button
+                            type="button"
+                            disabled={Boolean(scheduleActionState.busyKey)}
+                            onClick={() => handleScheduleAction(applicant, 'cancel')}
+                            className="inline-flex items-center justify-center gap-1 rounded-md border border-red-400/20 px-2 py-2 text-xs font-semibold text-red-300 hover:border-red-300 disabled:cursor-wait disabled:opacity-60"
+                          >
+                            <Ban size={13} />
+                            {scheduleActionState.busyKey === `${applicant.id}-cancel` ? 'Saving' : 'Cancel'}
+                          </button>
+                        </div>
                       </div>
                     </article>
                   )

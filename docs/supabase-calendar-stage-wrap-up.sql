@@ -6,9 +6,23 @@ create table if not exists calendar_settings (
   interview_duration_minutes integer not null default 30,
   buffer_minutes integer not null default 15,
   scheduling_window text not null default '3 business days after voice interview',
+  business_hours_start text not null default '09:00',
+  business_hours_end text not null default '17:00',
+  allow_weekends boolean not null default false,
+  max_interviews_per_day integer not null default 6,
+  google_connection_status text not null default 'Not connected',
+  microsoft_connection_status text not null default 'Not connected',
   created_at timestamptz not null default now(),
   updated_at timestamptz not null default now()
 );
+
+alter table calendar_settings
+  add column if not exists business_hours_start text not null default '09:00',
+  add column if not exists business_hours_end text not null default '17:00',
+  add column if not exists allow_weekends boolean not null default false,
+  add column if not exists max_interviews_per_day integer not null default 6,
+  add column if not exists google_connection_status text not null default 'Not connected',
+  add column if not exists microsoft_connection_status text not null default 'Not connected';
 
 create unique index if not exists idx_calendar_settings_key
   on calendar_settings(settings_key);
@@ -58,6 +72,31 @@ alter table interview_schedules
   add column if not exists sync_status text not null default 'Not Connected',
   add column if not exists sync_error text,
   add column if not exists synced_at timestamptz;
+
+create table if not exists calendar_sync_logs (
+  id uuid primary key default gen_random_uuid(),
+  applicant_id uuid references applicants(id) on delete set null,
+  interview_schedule_id uuid references interview_schedules(id) on delete set null,
+  provider text not null default 'internal_calendar',
+  action text not null,
+  sync_status text not null default 'Logged',
+  provider_event_id text,
+  message text,
+  error_message text,
+  created_at timestamptz not null default now()
+);
+
+alter table calendar_sync_logs enable row level security;
+
+drop policy if exists "Public can read calendar sync logs for demo" on calendar_sync_logs;
+create policy "Public can read calendar sync logs for demo"
+  on calendar_sync_logs for select
+  using (true);
+
+drop policy if exists "Public can create calendar sync logs for demo" on calendar_sync_logs;
+create policy "Public can create calendar sync logs for demo"
+  on calendar_sync_logs for insert
+  with check (true);
 
 create index if not exists idx_interview_schedules_scheduled_for
   on interview_schedules(scheduled_for);
