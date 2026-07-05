@@ -67,10 +67,10 @@ create index if not exists idx_interview_schedules_external_event_id
 
 update interview_schedules
 set
-  interviewer_email = coalesce(interviewer_email, calendar_settings.interviewer_email),
-  interview_duration_minutes = coalesce(interview_duration_minutes, calendar_settings.interview_duration_minutes),
-  buffer_minutes = coalesce(buffer_minutes, calendar_settings.buffer_minutes),
-  sync_status = coalesce(sync_status, 'Not Connected'),
+  interviewer_email = coalesce(interview_schedules.interviewer_email, calendar_settings.interviewer_email),
+  interview_duration_minutes = coalesce(interview_schedules.interview_duration_minutes, calendar_settings.interview_duration_minutes),
+  buffer_minutes = coalesce(interview_schedules.buffer_minutes, calendar_settings.buffer_minutes),
+  sync_status = coalesce(interview_schedules.sync_status, 'Not Connected'),
   updated_at = now()
 from calendar_settings
 where calendar_settings.settings_key = 'default';
