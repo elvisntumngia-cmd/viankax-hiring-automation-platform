@@ -300,6 +300,20 @@ create table if not exists calendar_sync_logs (
   created_at timestamptz not null default now()
 );
 
+create table if not exists calendar_connections (
+  id uuid primary key default gen_random_uuid(),
+  provider text not null,
+  provider_account_email text,
+  access_token text,
+  refresh_token text,
+  token_type text,
+  scope text,
+  expires_at timestamptz,
+  connection_status text not null default 'Not connected',
+  created_at timestamptz not null default now(),
+  updated_at timestamptz not null default now()
+);
+
 create table if not exists placement_matches (
   id uuid primary key default gen_random_uuid(),
   applicant_id uuid not null references applicants(id) on delete cascade,
@@ -321,6 +335,7 @@ create index if not exists idx_job_sites_status on job_sites(status);
 create index if not exists idx_open_shifts_site_id on open_shifts(site_id);
 create index if not exists idx_open_shifts_status on open_shifts(status);
 create unique index if not exists idx_calendar_settings_key on calendar_settings(settings_key);
+create unique index if not exists idx_calendar_connections_provider on calendar_connections(provider);
 create index if not exists idx_jobs_site_id on jobs(site_id);
 create index if not exists idx_jobs_open_shift_id on jobs(open_shift_id);
 create index if not exists idx_applicants_job_id on applicants(job_id);
@@ -364,6 +379,7 @@ alter table pipeline_stage_history enable row level security;
 alter table voice_interviews enable row level security;
 alter table interview_schedules enable row level security;
 alter table calendar_settings enable row level security;
+alter table calendar_connections enable row level security;
 alter table calendar_sync_logs enable row level security;
 alter table placement_matches enable row level security;
 

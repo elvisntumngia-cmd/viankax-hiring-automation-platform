@@ -86,6 +86,25 @@ create table if not exists calendar_sync_logs (
   created_at timestamptz not null default now()
 );
 
+create table if not exists calendar_connections (
+  id uuid primary key default gen_random_uuid(),
+  provider text not null,
+  provider_account_email text,
+  access_token text,
+  refresh_token text,
+  token_type text,
+  scope text,
+  expires_at timestamptz,
+  connection_status text not null default 'Not connected',
+  created_at timestamptz not null default now(),
+  updated_at timestamptz not null default now()
+);
+
+create unique index if not exists idx_calendar_connections_provider
+  on calendar_connections(provider);
+
+alter table calendar_connections enable row level security;
+
 alter table calendar_sync_logs enable row level security;
 
 drop policy if exists "Public can read calendar sync logs for demo" on calendar_sync_logs;
