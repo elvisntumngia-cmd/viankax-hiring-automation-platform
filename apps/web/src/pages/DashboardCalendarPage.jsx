@@ -4,7 +4,7 @@ import { Link } from 'react-router-dom'
 import PageHeader from '../components/PageHeader'
 import { applicants as dummyApplicants } from '../data/dummyApplicants'
 import useSupabaseData from '../hooks/useSupabaseData'
-import { defaultCalendarSettings, fetchApplicants, fetchCalendarSettings, saveCalendarSettings, updateInterviewSchedule } from '../services/supabaseData'
+import { defaultCalendarSettings, fetchApplicants, fetchCalendarSettings, saveCalendarSettings, startCalendarOAuth, syncPendingCalendarEvents, updateInterviewSchedule } from '../services/supabaseData'
 import { getStoredApplications } from '../utils/applicationStorage'
 import { getCandidateScores } from '../utils/candidateInsights'
 
@@ -43,6 +43,7 @@ function DashboardCalendarPage() {
   const [calendarSettingsDraft, setCalendarSettingsDraft] = useState(null)
   const [settingsState, setSettingsState] = useState({ busy: false, message: '', error: '' })
   const [scheduleActionState, setScheduleActionState] = useState({ busyKey: '', message: '', error: '' })
+  const [providerActionState, setProviderActionState] = useState({ busyKey: '', message: '', error: '' })
   const { data: backendApplicants, status, error } = useSupabaseData(fetchApplicants, dummyApplicants)
   const {
     data: savedCalendarSettings,
@@ -115,6 +116,46 @@ function DashboardCalendarPage() {
         error: actionError.message?.includes('calendar_sync_logs')
           ? 'Schedule updated, but sync log table is not ready. Run the calendar wrap-up SQL and try again.'
           : actionError.message,
+      })
+    }
+  }
+
+  async function handleProviderAction(provider) {
+    setProviderActionState({ busyKey: provider, message: '', error: '' })
+
+    try {
+      const result = await startCalendarOAuth(provider)
+      setProviderActionState({
+        busyKey: '',
+        message: result.authorizationUrl
+          ? `${provider} OAuth scaffold is ready. Provider credentials are required before redirect.`
+          : result.message,
+        error: '',
+      })
+    } catch (providerError) {
+      setProviderActionState({
+        busyKey: '',
+        message: '',
+        error: providerError.message,
+      })
+    }
+  }
+
+  async function handleSyncPendingEvents() {
+    setProviderActionState({ busyKey: 'sync', message: '', error: '' })
+
+    try {
+      const result = await syncPendingCalendarEvents()
+      setProviderActionState({
+        busyKey: '',
+        message: result.message ?? 'Calendar sync completed.',
+        error: '',
+      })
+    } catch (syncError) {
+      setProviderActionState({
+        busyKey: '',
+        message: '',
+        error: syncError.message,
       })
     }
   }
@@ -201,22 +242,48 @@ function DashboardCalendarPage() {
           <div className="grid gap-2 sm:grid-cols-2">
             <button
               type="button"
-              onClick={() => updateCalendarSetting('googleConnectionStatus', calendarSettings.googleConnectionStatus === 'Connected' ? 'Not connected' : 'Ready to connect')}
+              onClick={() => handleProviderAction('google')}
+              disabled={Boolean(providerActionState.busyKey)}
               className="inline-flex items-center justify-center gap-2 rounded-md border border-white/[0.10] bg-white/[0.04] px-4 py-2 text-sm font-semibold text-zinc-200 hover:border-[#0084FF] hover:text-[#0084FF]"
             >
               <CalendarDays size={16} />
-              Google: {calendarSettings.googleConnectionStatus}
+              {providerActionState.busyKey === 'google' ? 'Preparing Google...' : `Google: ${calendarSettings.googleConnectionStatus}`}
             </button>
             <button
               type="button"
-              onClick={() => updateCalendarSetting('microsoftConnectionStatus', calendarSettings.microsoftConnectionStatus === 'Connected' ? 'Not connected' : 'Ready to connect')}
+              onClick={() => handleProviderAction('microsoft')}
+              disabled={Boolean(providerActionState.busyKey)}
               className="inline-flex items-center justify-center gap-2 rounded-md border border-white/[0.10] bg-white/[0.04] px-4 py-2 text-sm font-semibold text-zinc-200 hover:border-[#0084FF] hover:text-[#0084FF]"
             >
               <Mail size={16} />
-              Microsoft: {calendarSettings.microsoftConnectionStatus}
+              {providerActionState.busyKey === 'microsoft' ? 'Preparing Microsoft...' : `Microsoft: ${calendarSettings.microsoftConnectionStatus}`}
             </button>
           </div>
         </div>
+        <div className="mt-4 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+          <p className="text-sm text-zinc-400">
+            OAuth is server-side only. Buttons call Supabase Edge Functions and will activate after provider secrets are configured.
+          </p>
+          <button
+            type="button"
+            onClick={handleSyncPendingEvents}
+            disabled={Boolean(providerActionState.busyKey)}
+            className="inline-flex w-fit items-center justify-center gap-2 rounded-md bg-[#0084FF] px-4 py-2 text-sm font-semibold text-white hover:bg-blue-500 disabled:cursor-wait disabled:opacity-70"
+          >
+            <RefreshCcw size={15} />
+            {providerActionState.busyKey === 'sync' ? 'Syncing...' : 'Sync pending events'}
+          </button>
+        </div>
+        {(providerActionState.message || providerActionState.error) ? (
+          <div className={`mt-4 rounded-lg border p-4 text-sm font-semibold ${
+            providerActionState.error
+              ? 'border-amber-400/30 bg-amber-500/10 text-amber-200'
+              : 'border-emerald-400/30 bg-emerald-500/10 text-emerald-200'
+          }`}
+          >
+            {providerActionState.error || providerActionState.message}
+          </div>
+        ) : null}
       </section>
 
       <section className="mt-6 grid gap-4 xl:grid-cols-[minmax(0,1fr)_360px]">

@@ -667,6 +667,33 @@ export async function updateInterviewSchedule(applicantId, updates) {
   return data
 }
 
+export async function startCalendarOAuth(provider) {
+  if (!isSupabaseConfigured) throw new Error('Supabase is not configured.')
+
+  const { data, error } = await supabase.functions.invoke('calendar-oauth-start', {
+    body: {
+      provider,
+      redirectTo: typeof window !== 'undefined' ? `${window.location.origin}/dashboard/calendar` : undefined,
+    },
+  })
+
+  if (error) throw error
+  if (data?.error) throw new Error(data.error)
+  return data
+}
+
+export async function syncPendingCalendarEvents() {
+  if (!isSupabaseConfigured) throw new Error('Supabase is not configured.')
+
+  const { data, error } = await supabase.functions.invoke('sync-calendar-events', {
+    body: { mode: 'manual-sync' },
+  })
+
+  if (error) throw error
+  if (data?.error) throw new Error(data.error)
+  return data
+}
+
 function splitList(value) {
   return String(value ?? '')
     .split(',')
