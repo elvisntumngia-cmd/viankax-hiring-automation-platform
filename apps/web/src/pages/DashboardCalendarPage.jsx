@@ -377,6 +377,11 @@ function DashboardCalendarPage() {
                           <p>Voice: <span className="font-semibold text-white">{Number.isFinite(scores.voiceInterviewScore) ? `${scores.voiceInterviewScore}%` : 'Pending'}</span></p>
                           <p>Match: <span className="font-semibold text-white">{Number.isFinite(applicant.placementRecommendation?.matchScore) ? `${applicant.placementRecommendation.matchScore}%` : 'Pending'}</span></p>
                         </div>
+                        <div className="mt-3 grid gap-2 text-sm text-zinc-400 sm:grid-cols-3">
+                          <p>Interviewer: <span className="font-semibold text-zinc-200">{interview.interviewerEmail ?? calendarSettings.interviewerEmail}</span></p>
+                          <p>Duration: <span className="font-semibold text-zinc-200">{interview.interviewDurationMinutes ?? calendarSettings.interviewDuration} min</span></p>
+                          <p>Buffer: <span className="font-semibold text-zinc-200">{interview.bufferMinutes ?? calendarSettings.bufferTime} min</span></p>
+                        </div>
                         <p className="mt-2 text-sm font-semibold text-emerald-300">
                           {applicant.placementRecommendation?.bestMatch ?? 'Placement match pending'}
                         </p>

@@ -36,6 +36,22 @@ type NotificationRow = {
   }
 }
 
+type CalendarSettings = {
+  provider: string
+  interviewerEmail: string
+  interviewDuration: string
+  bufferTime: string
+  schedulingWindow: string
+}
+
+const defaultCalendarSettings: CalendarSettings = {
+  provider: 'Internal calendar',
+  interviewerEmail: 'hr@viankax.com',
+  interviewDuration: '30',
+  bufferTime: '15',
+  schedulingWindow: '3 business days after voice interview',
+}
+
 function jsonResponse(body: Record<string, unknown>, status = 200) {
   return Response.json(body, { status, headers: corsHeaders })
 }
@@ -46,6 +62,98 @@ function errorMessage(error: unknown) {
 
 function normalizedList(value: unknown) {
   return Array.isArray(value) ? value : value ? [value] : []
+}
+
+function mapCalendarSettings(row: Record<string, any> | null): CalendarSettings {
+  if (!row) return defaultCalendarSettings
+
+  return {
+    provider: row.provider ?? defaultCalendarSettings.provider,
+    interviewerEmail: row.interviewer_email ?? defaultCalendarSettings.interviewerEmail,
+    interviewDuration: String(row.interview_duration_minutes ?? defaultCalendarSettings.interviewDuration),
+    bufferTime: String(row.buffer_minutes ?? defaultCalendarSettings.bufferTime),
+    schedulingWindow: row.scheduling_window ?? defaultCalendarSettings.schedulingWindow,
+  }
+}
+
+function calendarProviderKey(provider: string) {
+  const normalized = String(provider ?? '').toLowerCase()
+
+  if (normalized.includes('google')) return 'google_calendar'
+  if (normalized.includes('microsoft') || normalized.includes('outlook')) return 'microsoft_outlook'
+  return 'internal_calendar'
+}
+
+function addBusinessDays(startDate: Date, businessDays: number) {
+  const date = new Date(startDate)
+  let addedDays = 0
+
+  while (addedDays < businessDays) {
+    date.setDate(date.getDate() + 1)
+    const day = date.getDay()
+    if (day !== 0 && day !== 6) addedDays += 1
+  }
+
+  return date
+}
+
+function scheduledDateFromCalendarSettings(settings: CalendarSettings) {
+  const windowText = settings.schedulingWindow ?? defaultCalendarSettings.schedulingWindow
+  const days = Number(windowText.match(/\d+/)?.[0] ?? 3)
+  const usesBusinessDays = windowText.toLowerCase().includes('business')
+  const scheduledDate = usesBusinessDays
+    ? addBusinessDays(new Date(), days)
+    : new Date(Date.now() + days * 24 * 60 * 60 * 1000)
+
+  scheduledDate.setHours(10, 0, 0, 0)
+  return scheduledDate.toISOString()
+}
+
+async function fetchCalendarSettings(supabase: ReturnType<typeof createClient>) {
+  const { data, error } = await supabase
+    .from('calendar_settings')
+    .select('*')
+    .eq('settings_key', 'default')
+    .maybeSingle()
+
+  if (error) {
+    if (error.code === '42P01' || error.message?.includes('calendar_settings')) {
+      return defaultCalendarSettings
+    }
+
+    throw error
+  }
+
+  return mapCalendarSettings(data)
+}
+
+async function insertInterviewSchedule(supabase: ReturnType<typeof createClient>, scheduleRow: Record<string, unknown>) {
+  const result = await supabase.from('interview_schedules').insert(scheduleRow)
+  const { error } = result
+
+  if (!error) return result
+
+  const canFallback =
+    error.code === '42703' ||
+    error.message?.includes('interviewer_email') ||
+    error.message?.includes('interview_duration_minutes') ||
+    error.message?.includes('buffer_minutes') ||
+    error.message?.includes('external_calendar_provider') ||
+    error.message?.includes('sync_status')
+
+  if (!canFallback) throw error
+
+  const fallbackRow = {
+    applicant_id: scheduleRow.applicant_id,
+    provider: scheduleRow.provider,
+    scheduled_for: scheduleRow.scheduled_for,
+    scheduling_url: scheduleRow.scheduling_url,
+    status: scheduleRow.status,
+    updated_at: scheduleRow.updated_at,
+  }
+  const fallbackResult = await supabase.from('interview_schedules').insert(fallbackRow)
+  if (fallbackResult.error) throw fallbackResult.error
+  return fallbackResult
 }
 
 function processedEventForJob(job: AutomationJob, provider = 'placeholder') {
@@ -398,19 +506,24 @@ async function applyPlaceholderJobEffects(supabase: ReturnType<typeof createClie
   }
 
   if (job.job_type === 'send_scheduling_link') {
-    const scheduledFor = new Date(Date.now() + 3 * 24 * 60 * 60 * 1000).toISOString()
+    const calendarSettings = await fetchCalendarSettings(supabase)
+    const calendarProvider = calendarProviderKey(calendarSettings.provider)
+    const scheduledFor = scheduledDateFromCalendarSettings(calendarSettings)
     const placementMatches = await generatePlacementMatches(supabase, job.applicant_id)
     effects.push(
-      supabase
-        .from('interview_schedules')
-        .insert({
-          applicant_id: job.applicant_id,
-          provider: 'calendar_placeholder',
-          scheduled_for: scheduledFor,
-          scheduling_url: 'https://cal.com/viankax/final-interview-placeholder',
-          status: 'Scheduled',
-          updated_at: now,
-        }),
+      insertInterviewSchedule(supabase, {
+        applicant_id: job.applicant_id,
+        provider: calendarProvider,
+        scheduled_for: scheduledFor,
+        scheduling_url: 'https://cal.com/viankax/final-interview-placeholder',
+        status: 'Scheduled',
+        external_calendar_provider: calendarProvider === 'internal_calendar' ? null : calendarSettings.provider,
+        sync_status: calendarProvider === 'internal_calendar' ? 'Not Connected' : 'Ready to sync',
+        interviewer_email: calendarSettings.interviewerEmail,
+        interview_duration_minutes: Number(calendarSettings.interviewDuration),
+        buffer_minutes: Number(calendarSettings.bufferTime),
+        updated_at: now,
+      }),
     )
     effects.push(
       supabase

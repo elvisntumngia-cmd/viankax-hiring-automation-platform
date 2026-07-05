@@ -405,6 +405,16 @@ function ApplicantDetailPage() {
           <DetailRow label="Status" value={applicant.finalInterview?.status ?? 'Not Scheduled'} />
           <DetailRow label="Date/time" value={applicant.interviewTime} />
           <DetailRow label="Provider" value={applicant.finalInterview?.provider ?? 'Calendar placeholder'} />
+          <DetailRow label="Interviewer" value={applicant.finalInterview?.interviewerEmail ?? 'Not assigned'} />
+          <DetailRow
+            label="Duration"
+            value={applicant.finalInterview?.interviewDurationMinutes ? `${applicant.finalInterview.interviewDurationMinutes} minutes` : 'Not set'}
+          />
+          <DetailRow
+            label="Buffer"
+            value={applicant.finalInterview?.bufferMinutes ? `${applicant.finalInterview.bufferMinutes} minutes` : 'Not set'}
+          />
+          <DetailRow label="Sync status" value={applicant.finalInterview?.syncStatus ?? 'Not Connected'} />
           {applicant.finalInterview?.schedulingUrl ? (
             <a
               href={applicant.finalInterview.schedulingUrl}

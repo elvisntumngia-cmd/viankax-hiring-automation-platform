@@ -1,4 +1,7 @@
 alter table interview_schedules
+  add column if not exists interviewer_email text,
+  add column if not exists interview_duration_minutes integer not null default 30,
+  add column if not exists buffer_minutes integer not null default 15,
   add column if not exists external_calendar_provider text,
   add column if not exists external_event_id text,
   add column if not exists sync_status text not null default 'Not Connected',

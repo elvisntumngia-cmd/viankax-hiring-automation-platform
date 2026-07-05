@@ -33,6 +33,69 @@ function mapCalendarSettings(row) {
   }
 }
 
+function calendarProviderKey(provider) {
+  const normalized = String(provider ?? '').toLowerCase()
+
+  if (normalized.includes('google')) return 'google_calendar'
+  if (normalized.includes('microsoft') || normalized.includes('outlook')) return 'microsoft_outlook'
+  return 'internal_calendar'
+}
+
+function addBusinessDays(startDate, businessDays) {
+  const date = new Date(startDate)
+  let addedDays = 0
+
+  while (addedDays < businessDays) {
+    date.setDate(date.getDate() + 1)
+    const day = date.getDay()
+    if (day !== 0 && day !== 6) addedDays += 1
+  }
+
+  return date
+}
+
+function scheduledDateFromCalendarSettings(settings) {
+  const windowText = settings.schedulingWindow ?? defaultCalendarSettings.schedulingWindow
+  const days = Number(windowText.match(/\d+/)?.[0] ?? 3)
+  const usesBusinessDays = windowText.toLowerCase().includes('business')
+  const scheduledDate = usesBusinessDays
+    ? addBusinessDays(new Date(), days)
+    : new Date(Date.now() + days * 24 * 60 * 60 * 1000)
+
+  scheduledDate.setHours(10, 0, 0, 0)
+  return scheduledDate.toISOString()
+}
+
+async function insertInterviewSchedule(scheduleRow) {
+  const result = await supabase.from('interview_schedules').insert(scheduleRow)
+  const { error } = result
+
+  if (!error) return result
+
+  const canFallback =
+    error.code === '42703' ||
+    error.message?.includes('interviewer_email') ||
+    error.message?.includes('interview_duration_minutes') ||
+    error.message?.includes('buffer_minutes') ||
+    error.message?.includes('external_calendar_provider') ||
+    error.message?.includes('sync_status')
+
+  if (!canFallback) throw error
+
+  const fallbackRow = {
+    applicant_id: scheduleRow.applicant_id,
+    provider: scheduleRow.provider,
+    scheduled_for: scheduleRow.scheduled_for,
+    scheduling_url: scheduleRow.scheduling_url,
+    status: scheduleRow.status,
+    updated_at: scheduleRow.updated_at,
+  }
+  const fallbackResult = await supabase.from('interview_schedules').insert(fallbackRow)
+  const { error: fallbackError } = fallbackResult
+  if (fallbackError) throw fallbackError
+  return fallbackResult
+}
+
 function mapJob(row) {
   return {
     id: row.id,
@@ -408,6 +471,9 @@ function mapApplicant(row) {
       scheduledFor: interviewSchedule.scheduled_for ?? null,
       schedulingUrl: interviewSchedule.scheduling_url ?? null,
       provider: interviewSchedule.provider ?? null,
+      interviewerEmail: interviewSchedule.interviewer_email ?? null,
+      interviewDurationMinutes: interviewSchedule.interview_duration_minutes ?? null,
+      bufferMinutes: interviewSchedule.buffer_minutes ?? null,
       externalCalendarProvider: interviewSchedule.external_calendar_provider ?? null,
       externalEventId: interviewSchedule.external_event_id ?? null,
       syncStatus: interviewSchedule.sync_status ?? 'Not Connected',
@@ -691,7 +757,7 @@ export async function fetchApplicants() {
       ),
       ai_recommendations(recommendation, confidence, summary, risk_flags),
       voice_interviews(provider, recording_url, score, transcript, recommendation, status),
-      interview_schedules(provider, scheduled_for, scheduling_url, status),
+      interview_schedules(provider, scheduled_for, scheduling_url, status, interviewer_email, interview_duration_minutes, buffer_minutes, external_calendar_provider, external_event_id, sync_status, sync_error),
       placement_matches(
         id,
         match_score,
@@ -750,7 +816,7 @@ export async function lookupApplicationStatus({ email, phone }) {
       ),
       ai_recommendations(recommendation, confidence, summary, risk_flags),
       voice_interviews(provider, recording_url, score, transcript, recommendation, status),
-      interview_schedules(provider, scheduled_for, scheduling_url, status),
+      interview_schedules(provider, scheduled_for, scheduling_url, status, interviewer_email, interview_duration_minutes, buffer_minutes, external_calendar_provider, external_event_id, sync_status, sync_error),
       placement_matches(
         id,
         match_score,
@@ -814,7 +880,7 @@ export async function fetchApplicantForScreening(applicantId) {
       ),
       ai_recommendations(recommendation, confidence, summary, risk_flags),
       voice_interviews(provider, recording_url, score, transcript, recommendation, status),
-      interview_schedules(provider, scheduled_for, scheduling_url, status),
+      interview_schedules(provider, scheduled_for, scheduling_url, status, interviewer_email, interview_duration_minutes, buffer_minutes, external_calendar_provider, external_event_id, sync_status, sync_error),
       placement_matches(
         id,
         match_score,
@@ -1499,19 +1565,24 @@ async function applyPlaceholderJobEffects(job) {
   }
 
   if (job.job_type === 'send_scheduling_link') {
-    const scheduledFor = new Date(Date.now() + 3 * 24 * 60 * 60 * 1000).toISOString()
+    const calendarSettings = await fetchCalendarSettings()
+    const calendarProvider = calendarProviderKey(calendarSettings.provider)
+    const scheduledFor = scheduledDateFromCalendarSettings(calendarSettings)
     const placementMatches = await generatePlacementMatches(job.applicant_id)
     effects.push(
-      supabase
-        .from('interview_schedules')
-        .insert({
-          applicant_id: job.applicant_id,
-          provider: 'calendar_placeholder',
-          scheduled_for: scheduledFor,
-          scheduling_url: 'https://cal.com/viankax/final-interview-placeholder',
-          status: 'Scheduled',
-          updated_at: now,
-        }),
+      insertInterviewSchedule({
+        applicant_id: job.applicant_id,
+        provider: calendarProvider,
+        scheduled_for: scheduledFor,
+        scheduling_url: 'https://cal.com/viankax/final-interview-placeholder',
+        status: 'Scheduled',
+        external_calendar_provider: calendarProvider === 'internal_calendar' ? null : calendarSettings.provider,
+        sync_status: calendarProvider === 'internal_calendar' ? 'Not Connected' : 'Ready to sync',
+        interviewer_email: calendarSettings.interviewerEmail,
+        interview_duration_minutes: Number(calendarSettings.interviewDuration),
+        buffer_minutes: Number(calendarSettings.bufferTime),
+        updated_at: now,
+      }),
     )
     effects.push(
       supabase

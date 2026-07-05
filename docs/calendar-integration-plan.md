@@ -11,7 +11,7 @@ The internal calendar is now the source of truth for final in-person interviews.
 
 ## Supabase Fields For Provider Sync
 
-Run `docs/supabase-calendar-integration-fields.sql` before wiring a real provider.
+Run `docs/supabase-calendar-stage-wrap-up.sql` to install all calendar settings and sync fields in one pass.
 
 These fields prepare `interview_schedules` for Google Calendar and Microsoft Outlook:
 
@@ -28,6 +28,12 @@ These fields prepare `interview_schedules` for Google Calendar and Microsoft Out
 3. Provider event ID is saved to `interview_schedules.external_event_id`.
 4. Sync status updates to `Synced` or `Failed`.
 5. HR can still view all interviews inside ViankaX even if provider sync fails.
+
+## Current Automation Behavior
+
+- The automation runner reads `calendar_settings`.
+- New final interviews inherit the configured provider, interviewer email, duration, buffer, and scheduling window.
+- Google/Microsoft providers are marked `Ready to sync` until OAuth/provider sync is connected.
 
 ## Security Rules
 
