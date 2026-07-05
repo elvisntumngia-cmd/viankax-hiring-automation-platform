@@ -7,12 +7,14 @@ The frontend and Supabase Edge Function scaffolds are installed. OAuth/token exc
 - `calendar-oauth-start`
 - `calendar-oauth-callback`
 - `sync-calendar-events`
+- `calendar-disconnect`
 
 ## Implemented Behavior
 
 - `calendar-oauth-start` creates the provider authorization URL when secrets are present.
 - `calendar-oauth-callback` exchanges the authorization code for provider tokens and stores the connection server-side.
 - `sync-calendar-events` creates, updates, or cancels Google Calendar events when a Google connection exists.
+- `calendar-disconnect` removes the saved provider connection and updates calendar settings.
 - If no provider connection exists, sync falls back to placeholder event IDs so demos continue working.
 
 ## Required Supabase Secrets
@@ -43,6 +45,7 @@ Google Calendar event creation is implemented. Microsoft is scaffolded for OAuth
 supabase functions deploy calendar-oauth-start
 supabase functions deploy calendar-oauth-callback
 supabase functions deploy sync-calendar-events
+supabase functions deploy calendar-disconnect
 ```
 
 ## Database Setup

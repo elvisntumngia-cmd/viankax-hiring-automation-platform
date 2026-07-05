@@ -4,7 +4,7 @@ import { Link } from 'react-router-dom'
 import PageHeader from '../components/PageHeader'
 import { applicants as dummyApplicants } from '../data/dummyApplicants'
 import useSupabaseData from '../hooks/useSupabaseData'
-import { defaultCalendarSettings, fetchApplicants, fetchCalendarSettings, saveCalendarSettings, startCalendarOAuth, syncPendingCalendarEvents, updateInterviewSchedule } from '../services/supabaseData'
+import { defaultCalendarSettings, disconnectCalendarProvider, fetchApplicants, fetchCalendarSettings, saveCalendarSettings, startCalendarOAuth, syncPendingCalendarEvents, updateInterviewSchedule } from '../services/supabaseData'
 import { getStoredApplications } from '../utils/applicationStorage'
 import { getCandidateScores } from '../utils/candidateInsights'
 
@@ -125,11 +125,14 @@ function DashboardCalendarPage() {
 
     try {
       const result = await startCalendarOAuth(provider)
+      if (result.authorizationUrl) {
+        window.location.assign(result.authorizationUrl)
+        return
+      }
+
       setProviderActionState({
         busyKey: '',
-        message: result.authorizationUrl
-          ? `${provider} OAuth scaffold is ready. Provider credentials are required before redirect.`
-          : result.message,
+        message: result.message,
         error: '',
       })
     } catch (providerError) {
@@ -137,6 +140,26 @@ function DashboardCalendarPage() {
         busyKey: '',
         message: '',
         error: providerError.message,
+      })
+    }
+  }
+
+  async function handleProviderDisconnect(provider) {
+    setProviderActionState({ busyKey: `${provider}-disconnect`, message: '', error: '' })
+
+    try {
+      const result = await disconnectCalendarProvider(provider)
+      await reloadCalendarSettings()
+      setProviderActionState({
+        busyKey: '',
+        message: result.message,
+        error: '',
+      })
+    } catch (disconnectError) {
+      setProviderActionState({
+        busyKey: '',
+        message: '',
+        error: disconnectError.message,
       })
     }
   }
@@ -240,24 +263,32 @@ function DashboardCalendarPage() {
             </p>
           </div>
           <div className="grid gap-2 sm:grid-cols-2">
-            <button
-              type="button"
-              onClick={() => handleProviderAction('google')}
-              disabled={Boolean(providerActionState.busyKey)}
-              className="inline-flex items-center justify-center gap-2 rounded-md border border-white/[0.10] bg-white/[0.04] px-4 py-2 text-sm font-semibold text-zinc-200 hover:border-[#0084FF] hover:text-[#0084FF]"
-            >
-              <CalendarDays size={16} />
-              {providerActionState.busyKey === 'google' ? 'Preparing Google...' : `Google: ${calendarSettings.googleConnectionStatus}`}
-            </button>
-            <button
-              type="button"
-              onClick={() => handleProviderAction('microsoft')}
-              disabled={Boolean(providerActionState.busyKey)}
-              className="inline-flex items-center justify-center gap-2 rounded-md border border-white/[0.10] bg-white/[0.04] px-4 py-2 text-sm font-semibold text-zinc-200 hover:border-[#0084FF] hover:text-[#0084FF]"
-            >
-              <Mail size={16} />
-              {providerActionState.busyKey === 'microsoft' ? 'Preparing Microsoft...' : `Microsoft: ${calendarSettings.microsoftConnectionStatus}`}
-            </button>
+            {[
+              ['google', 'Google', calendarSettings.googleConnectionStatus, CalendarDays],
+              ['microsoft', 'Microsoft', calendarSettings.microsoftConnectionStatus, Mail],
+            ].map(([provider, label, connectionStatus, Icon]) => (
+              <div key={provider} className="grid gap-2 sm:grid-cols-[minmax(0,1fr)_auto]">
+                <button
+                  type="button"
+                  onClick={() => handleProviderAction(provider)}
+                  disabled={Boolean(providerActionState.busyKey)}
+                  className="inline-flex items-center justify-center gap-2 rounded-md border border-white/[0.10] bg-white/[0.04] px-4 py-2 text-sm font-semibold text-zinc-200 hover:border-[#0084FF] hover:text-[#0084FF]"
+                >
+                  <Icon size={16} />
+                  {providerActionState.busyKey === provider ? `Preparing ${label}...` : `${label}: ${connectionStatus}`}
+                </button>
+                {connectionStatus === 'Connected' ? (
+                  <button
+                    type="button"
+                    onClick={() => handleProviderDisconnect(provider)}
+                    disabled={Boolean(providerActionState.busyKey)}
+                    className="rounded-md border border-red-400/20 px-3 py-2 text-sm font-semibold text-red-300 hover:border-red-300 disabled:cursor-wait disabled:opacity-70"
+                  >
+                    Disconnect
+                  </button>
+                ) : null}
+              </div>
+            ))}
           </div>
         </div>
         <div className="mt-4 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
