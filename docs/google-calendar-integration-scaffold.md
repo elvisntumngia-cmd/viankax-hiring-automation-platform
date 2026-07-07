@@ -25,6 +25,7 @@ Set these before attempting real Google Calendar OAuth:
 supabase secrets set GOOGLE_CALENDAR_CLIENT_ID="your_google_client_id"
 supabase secrets set GOOGLE_CALENDAR_CLIENT_SECRET="your_google_client_secret"
 supabase secrets set CALENDAR_OAUTH_CALLBACK_URL="https://ayoqzgsimmlblwuqdccs.functions.supabase.co/calendar-oauth-callback"
+supabase secrets set APP_BASE_URL="http://localhost:5173"
 ```
 
 Microsoft later:
@@ -38,6 +39,8 @@ supabase secrets set MICROSOFT_TENANT_ID="common"
 ## Current Production Boundary
 
 Google Calendar event creation is implemented. Microsoft is scaffolded for OAuth but does not yet create real Outlook events.
+
+Google events include a ViankaX title, candidate/role details, interviewer email, duration, candidate contact info, reminders, and an applicant profile link when `APP_BASE_URL` is configured.
 
 ## Deploy Commands
 
