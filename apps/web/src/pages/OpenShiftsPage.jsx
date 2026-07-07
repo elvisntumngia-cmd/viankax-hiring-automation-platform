@@ -2,7 +2,7 @@ import { useState } from 'react'
 import PageHeader from '../components/PageHeader'
 import { jobSites, openShifts } from '../data/dummySites'
 import useSupabaseData from '../hooks/useSupabaseData'
-import { fetchJobSites, fetchOpenShifts, saveOpenShift } from '../services/supabaseData'
+import { fetchApplicants, fetchJobSites, fetchOpenShifts, saveOpenShift } from '../services/supabaseData'
 
 const blankShift = {
   id: '',
@@ -58,6 +58,7 @@ function shiftToForm(shift) {
 function OpenShiftsPage() {
   const { data: shifts, status, error } = useSupabaseData(fetchOpenShifts, openShifts)
   const { data: sites } = useSupabaseData(fetchJobSites, jobSites)
+  const { data: applicants } = useSupabaseData(fetchApplicants, [])
   const [savedShifts, setSavedShifts] = useState([])
   const [form, setForm] = useState(blankShift)
   const [message, setMessage] = useState('')
@@ -215,13 +216,17 @@ function OpenShiftsPage() {
                     <th className="px-4 py-3">Schedule</th>
                     <th className="px-4 py-3">License</th>
                     <th className="px-4 py-3">Positions</th>
+                    <th className="px-4 py-3">Assigned</th>
                     <th className="px-4 py-3">Urgency</th>
                     <th className="px-4 py-3">Status</th>
                     <th className="px-4 py-3">Action</th>
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-white/[0.08] text-zinc-300">
-                  {managedShifts.map((shift) => (
+                  {managedShifts.map((shift) => {
+                    const assignedApplicants = applicants.filter((applicant) => applicant.openShiftId === shift.id)
+
+                    return (
                     <tr key={shift.id} className="align-top">
                       <td className="px-4 py-4">
                         <p className="font-semibold text-white">{shift.shiftTitle}</p>
@@ -234,6 +239,7 @@ function OpenShiftsPage() {
                       </td>
                       <td className="px-4 py-4">{shift.requiredLicenseType}</td>
                       <td className="px-4 py-4">{shift.openPositions}</td>
+                      <td className="px-4 py-4">{assignedApplicants.length}</td>
                       <td className="px-4 py-4">
                         <span className={`rounded-full border px-3 py-1 text-xs font-semibold ${urgencyClass[shift.urgency] ?? urgencyClass.Normal}`}>
                           {shift.urgency}
@@ -250,14 +256,18 @@ function OpenShiftsPage() {
                         </button>
                       </td>
                     </tr>
-                  ))}
+                    )
+                  })}
                 </tbody>
               </table>
             </div>
           </div>
 
           <div className="grid gap-4 lg:grid-cols-2">
-            {managedShifts.map((shift) => (
+            {managedShifts.map((shift) => {
+              const assignedApplicants = applicants.filter((applicant) => applicant.openShiftId === shift.id)
+
+              return (
               <article key={`${shift.id}-traits`} className="rounded-lg border border-white/[0.10] bg-[#0B111C] p-5 shadow-xl shadow-black/20">
                 <h2 className="font-semibold text-white">{shift.shiftTitle}</h2>
                 <p className="mt-2 text-sm text-zinc-400">{shift.minimumExperience}</p>
@@ -283,8 +293,22 @@ function OpenShiftsPage() {
                     </div>
                   </div>
                 </div>
+                <div className="mt-4 rounded-md border border-white/[0.08] bg-white/[0.03] p-3">
+                  <p className="text-sm font-semibold text-white">Assigned candidates</p>
+                  <div className="mt-3 grid gap-2">
+                    {assignedApplicants.length ? assignedApplicants.map((applicant) => (
+                      <div key={applicant.id} className="flex flex-col gap-1 rounded-md bg-white/[0.04] p-3 sm:flex-row sm:items-center sm:justify-between">
+                        <span className="font-semibold text-zinc-100">{applicant.name}</span>
+                        <span className="text-sm text-zinc-400">{applicant.stage}</span>
+                      </div>
+                    )) : (
+                      <p className="text-sm text-zinc-500">No candidates assigned to this shift yet.</p>
+                    )}
+                  </div>
+                </div>
               </article>
-            ))}
+              )
+            })}
           </div>
         </div>
       </div>

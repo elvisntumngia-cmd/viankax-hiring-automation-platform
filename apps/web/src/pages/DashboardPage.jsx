@@ -1,4 +1,4 @@
-import { ArrowRight, Brain, CalendarCheck, CheckCircle2, FileWarning, Play, ShieldAlert, ShieldCheck, Star, UserPlus } from 'lucide-react'
+import { ArrowRight, Brain, CalendarCheck, CheckCircle2, Clock3, FileWarning, Play, ShieldAlert, ShieldCheck, Star, UserPlus, UsersRound } from 'lucide-react'
 import { useState } from 'react'
 import { Link } from 'react-router-dom'
 import AutomationQueuePanel from '../components/AutomationQueuePanel'
@@ -6,13 +6,14 @@ import AutomationRunHistoryPanel from '../components/AutomationRunHistoryPanel'
 import PageHeader from '../components/PageHeader'
 import { applicants as dummyApplicants } from '../data/dummyApplicants'
 import useSupabaseData from '../hooks/useSupabaseData'
-import { fetchApplicants, fetchAutomationQueueSummary, fetchAutomationRunHistory, processNextAutomationJob } from '../services/supabaseData'
+import { fetchApplicants, fetchAutomationQueueSummary, fetchAutomationRunHistory, fetchOpenShifts, processNextAutomationJob } from '../services/supabaseData'
 import { getStoredApplications } from '../utils/applicationStorage'
 import { getRecentApplicantActivity, matchesPipelinePreset } from '../utils/candidateInsights'
 
 function DashboardPage() {
   const [processorState, setProcessorState] = useState({ busy: false, message: '', error: '' })
   const { data: backendApplicants, status, error, reload: reloadApplicants } = useSupabaseData(fetchApplicants, dummyApplicants)
+  const { data: openShifts } = useSupabaseData(fetchOpenShifts, [])
   const { data: automationQueue, status: queueStatus, error: queueError, reload: reloadAutomationQueue } = useSupabaseData(fetchAutomationQueueSummary, [])
   const { data: automationHistory, reload: reloadAutomationHistory } = useSupabaseData(fetchAutomationRunHistory, [])
   const applicants = [...backendApplicants, ...getStoredApplications()]
@@ -20,6 +21,8 @@ function DashboardPage() {
   const pendingComplianceReview = applicants.filter((applicant) => matchesPipelinePreset(applicant, 'pending-compliance-review')).length
   const pendingInterviews = applicants.filter((applicant) => matchesPipelinePreset(applicant, 'pending-interviews')).length
   const strongCandidates = applicants.filter((applicant) => matchesPipelinePreset(applicant, 'strong-candidates')).length
+  const activeOpenShifts = openShifts.filter((shift) => shift.status === 'Open')
+  const urgentOpenShifts = activeOpenShifts.filter((shift) => ['Urgent', 'Critical'].includes(shift.urgency))
   const recentActivity = getRecentApplicantActivity(applicants)
   const upcomingFinalInterviews = applicants
     .filter((applicant) => applicant.finalInterview?.status === 'Scheduled' || applicant.interviewStatus === 'Scheduled')
@@ -36,6 +39,8 @@ function DashboardPage() {
     ['Pending Compliance Review', pendingComplianceReview, 'license and document checks', 'from-blue-900 to-blue-700', ShieldAlert, 'pending-compliance-review'],
     ['Pending Interviews', pendingInterviews, 'voice or manager interviews', 'from-emerald-950 to-emerald-800', CalendarCheck, 'pending-interviews'],
     ['Strong Candidates', strongCandidates, '85+ overall score', 'from-teal-950 to-zinc-900', Star, 'strong-candidates'],
+    ['Open Shifts', activeOpenShifts.length, 'active staffing needs', 'from-slate-900 to-blue-950', UsersRound, 'ready-placement-review'],
+    ['Urgent Shifts', urgentOpenShifts.length, 'priority coverage gaps', 'from-red-950 to-zinc-900', Clock3, 'ready-placement-review'],
   ]
 
   async function runAutomationJob() {
@@ -77,7 +82,7 @@ function DashboardPage() {
         </Link>
       </div>
 
-      <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-5">
+      <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-7">
         {metricCards.map(([label, value, helper, gradient, Icon, filterKey]) => (
           <Link
             key={label}

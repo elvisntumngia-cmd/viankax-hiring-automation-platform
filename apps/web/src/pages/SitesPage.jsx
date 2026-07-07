@@ -2,7 +2,7 @@ import { useState } from 'react'
 import PageHeader from '../components/PageHeader'
 import { jobSites } from '../data/dummySites'
 import useSupabaseData from '../hooks/useSupabaseData'
-import { fetchClients, fetchJobSites, saveJobSite } from '../services/supabaseData'
+import { fetchApplicants, fetchClients, fetchJobSites, fetchOpenShifts, saveJobSite } from '../services/supabaseData'
 
 const blankSite = {
   id: '',
@@ -45,6 +45,8 @@ function siteToForm(site) {
 
 function SitesPage() {
   const { data: sites, status, error } = useSupabaseData(fetchJobSites, jobSites)
+  const { data: applicants } = useSupabaseData(fetchApplicants, [])
+  const { data: openShifts } = useSupabaseData(fetchOpenShifts, [])
   const { data: clients } = useSupabaseData(fetchClients, [])
   const [savedSites, setSavedSites] = useState([])
   const [form, setForm] = useState(blankSite)
@@ -164,7 +166,28 @@ function SitesPage() {
 
         <div className="grid gap-4">
           {managedSites.map((site) => (
-            <article key={site.id} className="rounded-lg border border-white/[0.10] bg-[#0B111C] p-5 shadow-xl shadow-black/20">
+            <SiteCard
+              key={site.id}
+              site={site}
+              assignedApplicants={applicants.filter((applicant) => applicant.siteId === site.id)}
+              siteShifts={openShifts.filter((shift) => shift.siteId === site.id)}
+              onEdit={() => setForm(siteToForm(site))}
+            />
+          ))}
+          {!managedSites.length ? (
+            <p className="rounded-lg border border-white/[0.10] bg-[#0B111C] p-5 text-sm text-zinc-400">
+              No sites found. Create a client site to start building open shifts and placement matches.
+            </p>
+          ) : null}
+        </div>
+      </div>
+    </section>
+  )
+}
+
+function SiteCard({ site, assignedApplicants, siteShifts, onEdit }) {
+  return (
+    <article className="rounded-lg border border-white/[0.10] bg-[#0B111C] p-5 shadow-xl shadow-black/20">
               <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
                 <div>
                   <p className="text-sm font-semibold text-[#0084FF]">{site.clientCustomerName}</p>
@@ -175,7 +198,7 @@ function SitesPage() {
                   <span className={`w-fit rounded-full border px-3 py-1 text-xs font-semibold ${statusClass[site.status] ?? statusClass.Inactive}`}>
                     {site.status}
                   </span>
-                  <button type="button" onClick={() => setForm(siteToForm(site))} className="w-fit rounded-md border border-white/[0.12] px-3 py-2 text-sm font-semibold text-white hover:border-[#0084FF] hover:text-[#0084FF]">
+                  <button type="button" onClick={onEdit} className="w-fit rounded-md border border-white/[0.12] px-3 py-2 text-sm font-semibold text-white hover:border-[#0084FF] hover:text-[#0084FF]">
                     Edit
                   </button>
                 </div>
@@ -188,7 +211,11 @@ function SitesPage() {
                 </div>
                 <div className="rounded-md border border-white/[0.08] bg-white/[0.04] p-3">
                   <p className="text-xs font-semibold uppercase text-zinc-500">Open shifts</p>
-                  <p className="mt-2 font-semibold text-white">{site.openShiftsCount}</p>
+                  <p className="mt-2 font-semibold text-white">{siteShifts.length || site.openShiftsCount}</p>
+                </div>
+                <div className="rounded-md border border-white/[0.08] bg-white/[0.04] p-3">
+                  <p className="text-xs font-semibold uppercase text-zinc-500">Assigned candidates</p>
+                  <p className="mt-2 font-semibold text-white">{assignedApplicants.length}</p>
                 </div>
                 <div className="rounded-md border border-white/[0.08] bg-white/[0.04] p-3">
                   <p className="text-xs font-semibold uppercase text-zinc-500">State</p>
@@ -199,11 +226,21 @@ function SitesPage() {
               <p className="mt-5 rounded-md border border-white/[0.08] bg-white/[0.04] p-3 text-sm leading-6 text-zinc-300">
                 {site.siteNotes || 'No site notes yet.'}
               </p>
+
+              <div className="mt-5 rounded-md border border-white/[0.08] bg-white/[0.03] p-3">
+                <p className="text-sm font-semibold text-white">Assigned applicants</p>
+                <div className="mt-3 grid gap-2">
+                  {assignedApplicants.length ? assignedApplicants.map((applicant) => (
+                    <div key={applicant.id} className="flex flex-col gap-1 rounded-md bg-white/[0.04] p-3 sm:flex-row sm:items-center sm:justify-between">
+                      <span className="font-semibold text-zinc-100">{applicant.name}</span>
+                      <span className="text-sm text-zinc-400">{applicant.assignedShift?.shiftTitle ?? applicant.role}</span>
+                    </div>
+                  )) : (
+                    <p className="text-sm text-zinc-500">No candidates assigned to this site yet.</p>
+                  )}
+                </div>
+              </div>
             </article>
-          ))}
-        </div>
-      </div>
-    </section>
   )
 }
 
