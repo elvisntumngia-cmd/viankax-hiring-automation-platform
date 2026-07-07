@@ -42,12 +42,62 @@ function getScreeningStatus(application) {
   }
 }
 
+function getStatusMilestones(application) {
+  const scores = getCandidateScores(application)
+  const notificationSubjects = new Set((application.notifications ?? []).map((notification) => notification.subject))
+  const documentsUploaded = Object.values(application.documents ?? {}).some((status) =>
+    ['Uploaded', 'Received', 'Verified'].includes(status),
+  )
+
+  return [
+    {
+      label: 'Application Received',
+      state: 'complete',
+      description: 'Your application is in the ViankaX hiring workflow.',
+    },
+    {
+      label: 'AI Screening Sent',
+      state: notificationSubjects.has('Complete your ViankaX screening assessment') ? 'complete' : 'current',
+      description: 'Screening link is emailed after the application is accepted by automation.',
+    },
+    {
+      label: 'AI Screening Completed',
+      state: Number.isFinite(scores.screeningScore) || application.aiScreening?.status === 'completed' ? 'complete' : 'pending',
+      description: `Screening score: ${formatScore(scores.screeningScore)}`,
+    },
+    {
+      label: 'License / Document Review',
+      state: application.licenseStatus === 'Verified' ? 'complete' : documentsUploaded ? 'current' : 'pending',
+      description: `License status: ${application.licenseStatus ?? 'Pending'}`,
+    },
+    {
+      label: 'Voice Interview',
+      state: application.voiceInterview?.status === 'Completed' || Number.isFinite(scores.voiceInterviewScore) ? 'complete' : 'pending',
+      description: `Voice score: ${formatScore(scores.voiceInterviewScore)}`,
+    },
+    {
+      label: 'Interview Scheduled',
+      state: application.finalInterview?.status === 'Scheduled' ? 'complete' : 'pending',
+      description: application.interviewTime ?? 'Not scheduled',
+    },
+    {
+      label: 'Final Decision',
+      state: ['Hired', 'Rejected'].includes(application.stage) ||
+        (Boolean(application.decision) && application.decision !== 'Pending')
+        ? 'complete'
+        : 'pending',
+      description: application.decision ?? 'Pending',
+    },
+  ]
+}
+
 function ApplicationStatusPage() {
   const lastApplication = getLastApplication()
   const [form, setForm] = useState({ email: '', phone: '' })
   const [application, setApplication] = useState(lastApplication)
   const [status, setStatus] = useState('idle')
   const [error, setError] = useState('')
+  const statusMilestones = application ? getStatusMilestones(application) : []
 
   async function searchStatus(event) {
     event.preventDefault()
@@ -165,11 +215,42 @@ function ApplicationStatusPage() {
           </div>
           <div className="mt-4 rounded-md border border-blue-100 bg-blue-50 p-3 text-sm leading-6 text-blue-800">
             Automation engine: dashboard sync complete. AI screening, license review,
-            voice interview, and scheduling updates will appear here as they run.
+            voice interview, placement matching, and scheduling updates will appear here as they run.
           </div>
+          {application.finalInterview?.status === 'Scheduled' ? (
+            <div className="mt-4 rounded-md border border-green-200 bg-green-50 p-3 text-sm leading-6 text-green-800">
+              <p className="font-semibold">Final interview scheduled</p>
+              <p>{application.interviewTime}</p>
+              <p>Interviewer: {application.finalInterview.interviewerEmail ?? 'Hiring team'}</p>
+            </div>
+          ) : null}
         </aside>
 
-        <AutomationTimeline applicant={application} variant="light" />
+        <div className="space-y-5">
+          <section className="rounded-lg border border-[#E5E7EB] bg-white p-5 shadow-sm">
+            <h2 className="text-lg font-semibold text-[#111827]">Candidate workflow</h2>
+            <div className="mt-4 grid gap-3">
+              {statusMilestones.map((milestone) => (
+                <div key={milestone.label} className="flex gap-3 rounded-md border border-[#E5E7EB] bg-[#F8FAFC] p-3">
+                  <span
+                    className={`mt-1 h-3 w-3 shrink-0 rounded-full ${
+                      milestone.state === 'complete'
+                        ? 'bg-green-500'
+                        : milestone.state === 'current'
+                          ? 'bg-blue-500'
+                          : 'bg-[#CBD5E1]'
+                    }`}
+                  />
+                  <div>
+                    <p className="font-semibold text-[#111827]">{milestone.label}</p>
+                    <p className="mt-1 text-sm text-[#6B7280]">{milestone.description}</p>
+                  </div>
+                </div>
+              ))}
+            </div>
+          </section>
+          <AutomationTimeline applicant={application} variant="light" />
+        </div>
       </div>
 
       <div className="mt-6 flex flex-col gap-3 sm:flex-row">

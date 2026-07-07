@@ -397,6 +397,8 @@ function mapApplicant(row) {
   const placementMatches = mapPlacementMatches(row.placement_matches)
   const job = row.jobs ?? {}
   const client = row.clients ?? job.clients ?? {}
+  const assignedSite = row.assigned_site ? mapJobSite({ ...row.assigned_site, open_shifts: [] }) : null
+  const assignedShift = row.assigned_shift ? mapOpenShift(row.assigned_shift) : null
   const screeningAnswers = row.screening_answers?.length
     ? row.screening_answers.map((answer) => [answer.question, answer.answer ?? 'Not answered'])
     : [['Screening', 'No screening answers recorded yet.']]
@@ -419,6 +421,10 @@ function mapApplicant(row) {
     role: job.title ?? 'Role pending',
     client: client.name ?? 'ViankaX Client',
     location: row.location ?? job.location ?? 'Location pending',
+    siteId: row.site_id ?? null,
+    openShiftId: row.open_shift_id ?? null,
+    assignedSite,
+    assignedShift,
     phone: row.phone,
     email: row.email,
     stage: row.current_stage,
@@ -494,6 +500,7 @@ function mapApplicant(row) {
     placementMatches,
     placementRecommendation: placementMatches.length
       ? {
+        bestMatch: placementMatches[0].site?.siteName ?? placementMatches[0].shift?.shiftTitle ?? 'Placement match pending',
         matchScore: placementMatches[0].matchScore,
         reason: placementMatches[0].reason,
         strengths: placementMatches[0].strengths,
@@ -815,6 +822,8 @@ export async function fetchApplicants() {
       *,
       clients(name),
       jobs(title, location, clients(name)),
+      assigned_site:job_sites!applicants_site_id_fkey(*),
+      assigned_shift:open_shifts!applicants_open_shift_id_fkey(*, job_sites(site_name)),
       applicant_documents(document_type, file_name, storage_bucket, storage_path, status),
       automation_events(event_type, event_status, event_label, metadata, created_at),
       workflow_runs(id, workflow_name, run_status, current_step, started_at, completed_at, metadata, created_at, updated_at),
@@ -874,6 +883,8 @@ export async function lookupApplicationStatus({ email, phone }) {
       *,
       clients(name),
       jobs(title, location, clients(name)),
+      assigned_site:job_sites!applicants_site_id_fkey(*),
+      assigned_shift:open_shifts!applicants_open_shift_id_fkey(*, job_sites(site_name)),
       applicant_documents(document_type, file_name, storage_bucket, storage_path, status),
       automation_events(event_type, event_status, event_label, metadata, created_at),
       workflow_runs(id, workflow_name, run_status, current_step, started_at, completed_at, metadata, created_at, updated_at),
@@ -938,6 +949,8 @@ export async function fetchApplicantForScreening(applicantId) {
       *,
       clients(name),
       jobs(title, location, clients(name)),
+      assigned_site:job_sites!applicants_site_id_fkey(*),
+      assigned_shift:open_shifts!applicants_open_shift_id_fkey(*, job_sites(site_name)),
       applicant_documents(document_type, file_name, storage_bucket, storage_path, status),
       automation_events(event_type, event_status, event_label, metadata, created_at),
       workflow_runs(id, workflow_name, run_status, current_step, started_at, completed_at, metadata, created_at, updated_at),
@@ -2456,6 +2469,125 @@ function getDecisionUpdate(applicant, decision) {
     eventType: 'hr_rejected_candidate',
     eventLabel: 'HR Rejected Candidate',
     eventDescription: 'HR rejected the candidate and closed the hiring workflow.',
+  }
+}
+
+export async function assignApplicantToPlacement(applicant, placement) {
+  if (!isSupabaseConfigured) {
+    throw new Error('Supabase is not configured.')
+  }
+
+  if (!isUuid(applicant.id)) {
+    throw new Error('Only Supabase applicant records can be assigned.')
+  }
+
+  const siteId = placement?.site?.id ?? placement?.bestSite?.id ?? null
+  const openShiftId = placement?.shift?.id ?? placement?.bestShift?.id ?? placement?.shiftId ?? null
+
+  if (!isUuid(siteId) || !isUuid(openShiftId)) {
+    throw new Error('This placement match is demo-only. Use a Supabase-generated placement match before assigning.')
+  }
+
+  const nextStage = 'Hired'
+  const now = new Date().toISOString()
+
+  const { error: applicantError } = await supabase
+    .from('applicants')
+    .update({
+      site_id: siteId,
+      open_shift_id: openShiftId,
+      current_stage: nextStage,
+      status: 'Qualified',
+      final_decision: 'Assigned',
+      updated_at: now,
+    })
+    .eq('id', applicant.id)
+
+  if (applicantError) throw applicantError
+
+  const currentOpenPositions = Number(placement?.shift?.openPositions ?? placement?.bestShift?.openPositions)
+  const nextOpenPositions = Number.isFinite(currentOpenPositions)
+    ? Math.max(currentOpenPositions - 1, 0)
+    : null
+
+  if (nextOpenPositions !== null) {
+    const { error: shiftError } = await supabase
+      .from('open_shifts')
+      .update({
+        open_positions: nextOpenPositions,
+        status: nextOpenPositions === 0 ? 'Filled' : 'Open',
+        updated_at: now,
+      })
+      .eq('id', openShiftId)
+
+    if (shiftError) throw shiftError
+  }
+
+  const historyRow = {
+    applicant_id: applicant.id,
+    from_stage: applicant.stage,
+    to_stage: nextStage,
+    changed_by: 'hr_dashboard',
+    reason: 'HR assigned candidate to the recommended site/open shift.',
+  }
+  const eventRow = {
+    applicant_id: applicant.id,
+    event_type: 'hr_assigned_candidate_to_site',
+    event_status: 'complete',
+    event_label: 'HR Assigned Candidate',
+    metadata: {
+      siteId,
+      openShiftId,
+      fromStage: applicant.stage,
+      toStage: nextStage,
+      description: 'Candidate assigned to recommended placement and marked hired.',
+    },
+  }
+
+  const [{ error: historyError }, { error: eventError }] = await Promise.all([
+    supabase.from('pipeline_stage_history').insert(historyRow),
+    supabase.from('automation_events').insert(eventRow),
+  ])
+
+  if (historyError) throw historyError
+  if (eventError) throw eventError
+
+  return {
+    siteId,
+    openShiftId,
+    assignedSite: placement.site ?? placement.bestSite,
+    assignedShift: placement.shift ?? placement.bestShift,
+    stage: nextStage,
+    status: 'Qualified',
+    decision: 'Assigned',
+    latestEvent: {
+      type: eventRow.event_type,
+      status: eventRow.event_status,
+      label: eventRow.event_label,
+      description: eventRow.metadata.description,
+      createdAt: now,
+    },
+    automationEvents: [
+      {
+        type: eventRow.event_type,
+        status: eventRow.event_status,
+        label: eventRow.event_label,
+        description: eventRow.metadata.description,
+        createdAt: now,
+      },
+      ...(applicant.automationEvents ?? []),
+    ],
+    stageHistory: [
+      {
+        fromStage: historyRow.from_stage,
+        toStage: historyRow.to_stage,
+        changedBy: historyRow.changed_by,
+        reason: historyRow.reason,
+        createdAt: now,
+      },
+      ...(applicant.stageHistory ?? []),
+    ],
+    lastUpdatedAt: now,
   }
 }
 

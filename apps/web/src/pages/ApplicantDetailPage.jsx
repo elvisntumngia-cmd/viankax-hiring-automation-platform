@@ -12,7 +12,7 @@ import StageHistoryPanel from '../components/StageHistoryPanel'
 import { applicants as dummyApplicants } from '../data/dummyApplicants'
 import { getPlacementRecommendation } from '../data/dummySites'
 import useSupabaseData from '../hooks/useSupabaseData'
-import { createDocumentSignedUrl, fetchApplicants, updateApplicantDecision } from '../services/supabaseData'
+import { assignApplicantToPlacement, createDocumentSignedUrl, fetchApplicants, updateApplicantDecision } from '../services/supabaseData'
 import { getStoredApplications } from '../utils/applicationStorage'
 import { getCandidateScores } from '../utils/candidateInsights'
 
@@ -170,6 +170,27 @@ function ApplicantDetailPage() {
     }
   }
 
+  async function handleAssignPlacement() {
+    const placement = applicant.placementMatches?.[0] ?? applicant.placementRecommendation
+    setActionState({ busy: 'Assign', message: '', error: '' })
+
+    try {
+      const result = await assignApplicantToPlacement(applicant, placement)
+      setApplicantOverride({ id: applicant.id, ...result })
+      setActionState({
+        busy: '',
+        message: `${applicant.name} assigned to ${result.assignedSite?.siteName ?? 'recommended site'} and marked hired.`,
+        error: '',
+      })
+    } catch (assignmentError) {
+      setActionState({
+        busy: '',
+        message: '',
+        error: assignmentError.message,
+      })
+    }
+  }
+
   if (status === 'loading') {
     return (
       <section className="max-w-3xl rounded-lg border border-white/[0.10] bg-[#0B111C] p-6 shadow-xl shadow-black/20">
@@ -322,11 +343,29 @@ function ApplicantDetailPage() {
         </InfoCard>
 
         <InfoCard title="Placement context">
-          <DetailRow label="Linked site" value={placementRecommendation.bestSite?.siteName ?? 'Not linked yet'} />
-          <DetailRow label="Open shift" value={placementRecommendation.bestShift?.shiftTitle ?? 'Not linked yet'} />
+          <DetailRow label="Assigned site" value={applicant.assignedSite?.siteName ?? 'Not assigned yet'} />
+          <DetailRow label="Assigned shift" value={applicant.assignedShift?.shiftTitle ?? 'Not assigned yet'} />
+          <DetailRow label="Recommended site" value={placementRecommendation.bestSite?.siteName ?? 'Not linked yet'} />
+          <DetailRow label="Recommended shift" value={placementRecommendation.bestShift?.shiftTitle ?? 'Not linked yet'} />
           <DetailRow label="Required license" value={placementRecommendation.bestShift?.requiredLicenseType ?? 'Pending'} />
           <DetailRow label="Shift type" value={placementRecommendation.bestShift?.shiftType ?? 'Pending'} />
           <DetailRow label="Employment type" value={placementRecommendation.bestShift?.employmentType ?? 'Pending'} />
+          <DetailRow label="Open positions" value={placementRecommendation.bestShift?.openPositions ?? 'Pending'} />
+          <button
+            type="button"
+            disabled={Boolean(actionState.busy) || !canUpdateDecision || Boolean(applicant.assignedShift)}
+            onClick={handleAssignPlacement}
+            className="mt-4 w-full rounded-md bg-[#0084FF] px-4 py-3 font-semibold text-white hover:bg-blue-500 disabled:cursor-not-allowed disabled:opacity-60"
+          >
+            {actionState.busy === 'Assign'
+              ? 'Assigning...'
+              : applicant.assignedShift
+                ? 'Candidate assigned'
+                : 'Assign to recommended shift'}
+          </button>
+          <p className="mt-3 text-xs leading-5 text-zinc-500">
+            Assignment updates the applicant record, marks the candidate hired, and reduces the selected shift count when this is a Supabase placement match.
+          </p>
         </InfoCard>
 
         <InfoCard title="Documents">
