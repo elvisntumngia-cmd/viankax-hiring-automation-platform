@@ -4,6 +4,7 @@ This project includes deploy-ready automation Edge Functions:
 
 - `supabase/functions/process-automation-jobs/index.ts`
 - `supabase/functions/evaluate-ai-screening/index.ts`
+- `supabase/functions/vapi-voice-webhook/index.ts`
 
 The React dashboard now tries to call this Edge Function first. If it is not deployed yet, the app falls back to the local demo processor so development can continue.
 
@@ -47,6 +48,7 @@ From the project root:
 ```powershell
 supabase functions deploy process-automation-jobs
 supabase functions deploy evaluate-ai-screening
+supabase functions deploy vapi-voice-webhook
 ```
 
 ## Required Secrets
@@ -89,6 +91,19 @@ Notes:
 - Keep `OPENAI_API_KEY` only in Supabase secrets.
 - The dashboard/front-end never calls OpenAI directly.
 
+## Optional Vapi Voice Interview Secrets
+
+To create real Vapi voice interviews instead of placeholder voice results:
+
+```powershell
+supabase secrets set VAPI_API_KEY="your_vapi_api_key"
+supabase secrets set VAPI_ASSISTANT_ID="your_vapi_assistant_id"
+supabase secrets set VAPI_PHONE_NUMBER_ID="your_vapi_phone_number_id"
+supabase secrets set VAPI_WEBHOOK_SECRET="your_shared_webhook_secret"
+```
+
+Run `docs/supabase-vapi-voice-integration.sql` in Supabase before testing live Vapi calls.
+
 ## Test From Dashboard
 
 1. Open `/dashboard`.
@@ -105,6 +120,8 @@ The function processes queued jobs and uses real integrations where configured:
 
 - marks queued job as `running`
 - evaluates AI screening with OpenAI when `OPENAI_API_KEY` is configured
+- creates Vapi voice interview calls when Vapi secrets are configured
+- accepts Vapi completion webhooks at `vapi-voice-webhook`
 - uses safe placeholder behavior when provider keys are missing
 - updates notification records where applicable
 - sends real email through Resend only when `RESEND_API_KEY` is configured
@@ -114,4 +131,4 @@ The function processes queued jobs and uses real integrations where configured:
 - marks jobs `completed`
 - updates workflow run status
 
-Real Twilio and Vapi/Bland integrations come later. Resend and OpenAI are ready once the functions are deployed and the required secrets are set.
+Real Twilio comes later. Resend, OpenAI, and Vapi are ready once the functions are deployed, SQL migrations are run, and the required secrets are set.

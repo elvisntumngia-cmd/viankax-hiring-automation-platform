@@ -480,6 +480,9 @@ function mapApplicant(row) {
     voiceInterview: {
       score: voiceInterview.score ?? null,
       status: voiceInterview.status ?? row.interview_status ?? 'Not Started',
+      provider: voiceInterview.provider ?? null,
+      providerCallId: voiceInterview.provider_call_id ?? null,
+      interviewUrl: voiceInterview.interview_url ?? null,
       recordingUrl: voiceInterview.recording_url ?? null,
       transcript: voiceInterview.transcript ?? 'Voice interview has not been triggered yet.',
       recommendation: voiceInterview.recommendation ?? 'Wait for screening and document review.',
@@ -854,7 +857,7 @@ export async function fetchApplicants() {
         overall_candidate_score
       ),
       ai_recommendations(recommendation, confidence, summary, risk_flags),
-      voice_interviews(provider, recording_url, score, transcript, recommendation, status),
+      voice_interviews(provider, provider_call_id, interview_url, recording_url, score, transcript, recommendation, status),
       interview_schedules(provider, scheduled_for, scheduling_url, status, interviewer_email, interview_duration_minutes, buffer_minutes, external_calendar_provider, external_event_id, sync_status, sync_error),
       placement_matches(
         id,
@@ -915,7 +918,7 @@ export async function lookupApplicationStatus({ email, phone }) {
         overall_candidate_score
       ),
       ai_recommendations(recommendation, confidence, summary, risk_flags),
-      voice_interviews(provider, recording_url, score, transcript, recommendation, status),
+      voice_interviews(provider, provider_call_id, interview_url, recording_url, score, transcript, recommendation, status),
       interview_schedules(provider, scheduled_for, scheduling_url, status, interviewer_email, interview_duration_minutes, buffer_minutes, external_calendar_provider, external_event_id, sync_status, sync_error),
       placement_matches(
         id,
@@ -981,7 +984,7 @@ export async function fetchApplicantForScreening(applicantId) {
         overall_candidate_score
       ),
       ai_recommendations(recommendation, confidence, summary, risk_flags),
-      voice_interviews(provider, recording_url, score, transcript, recommendation, status),
+      voice_interviews(provider, provider_call_id, interview_url, recording_url, score, transcript, recommendation, status),
       interview_schedules(provider, scheduled_for, scheduling_url, status, interviewer_email, interview_duration_minutes, buffer_minutes, external_calendar_provider, external_event_id, sync_status, sync_error),
       placement_matches(
         id,

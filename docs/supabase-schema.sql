@@ -241,14 +241,23 @@ create table if not exists voice_interviews (
   id uuid primary key default gen_random_uuid(),
   applicant_id uuid not null references applicants(id) on delete cascade,
   provider text,
+  provider_call_id text,
+  interview_url text,
   recording_url text,
   transcript text,
   score integer check (score between 0 and 100),
   recommendation text,
   status text not null default 'Not Started',
+  raw_provider_payload jsonb not null default '{}',
   completed_at timestamptz,
-  created_at timestamptz not null default now()
+  created_at timestamptz not null default now(),
+  updated_at timestamptz not null default now()
 );
+
+alter table voice_interviews add column if not exists provider_call_id text;
+alter table voice_interviews add column if not exists interview_url text;
+alter table voice_interviews add column if not exists raw_provider_payload jsonb not null default '{}';
+alter table voice_interviews add column if not exists updated_at timestamptz not null default now();
 
 create table if not exists interview_schedules (
   id uuid primary key default gen_random_uuid(),
@@ -357,6 +366,8 @@ create index if not exists idx_automation_jobs_status on automation_jobs(job_sta
 create index if not exists idx_notification_queue_applicant_id on notification_queue(applicant_id);
 create index if not exists idx_notification_queue_status on notification_queue(notification_status);
 create index if not exists idx_pipeline_stage_history_applicant_id on pipeline_stage_history(applicant_id);
+create unique index if not exists idx_voice_interviews_provider_call_id on voice_interviews(provider_call_id)
+  where provider_call_id is not null;
 create index if not exists idx_placement_matches_applicant_id on placement_matches(applicant_id);
 create index if not exists idx_placement_matches_open_shift_id on placement_matches(open_shift_id);
 

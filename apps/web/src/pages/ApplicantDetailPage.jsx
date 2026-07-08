@@ -431,7 +431,19 @@ function ApplicantDetailPage() {
             value={applicant.voiceInterview.score ?? 'Not available'}
           />
           <DetailRow label="Status" value={applicant.voiceInterview.status ?? applicant.interviewStatus} />
+          <DetailRow label="Provider" value={applicant.voiceInterview.provider ?? 'Voice provider pending'} />
+          <DetailRow label="Provider call ID" value={applicant.voiceInterview.providerCallId ?? 'Not created yet'} />
           <DetailRow label="Recording" value={applicant.voiceInterview.recordingUrl ? 'Placeholder recording available' : 'Not available'} />
+          {applicant.voiceInterview.interviewUrl ? (
+            <a
+              href={applicant.voiceInterview.interviewUrl}
+              target="_blank"
+              rel="noreferrer"
+              className="mt-4 inline-flex rounded-md border border-[#0084FF]/40 bg-[#0084FF]/10 px-4 py-2 font-semibold text-[#7CC0FF] hover:bg-[#0084FF]/20"
+            >
+              Open voice interview
+            </a>
+          ) : null}
           <p className="mt-4 rounded-md border border-white/[0.08] bg-white/[0.04] p-3">
             {applicant.voiceInterview.transcript}
           </p>

@@ -1,5 +1,6 @@
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2'
 import { evaluateAiScreening } from '../_shared/openai-screening.ts'
+import { createVoiceInterview } from '../_shared/voice-interview-provider.ts'
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
@@ -299,6 +300,24 @@ async function buildAiScreeningContext(supabase: ReturnType<typeof createClient>
   }
 }
 
+async function buildVoiceInterviewContext(supabase: ReturnType<typeof createClient>, applicantId: string) {
+  const { data, error } = await supabase
+    .from('applicants')
+    .select(`
+      id,
+      full_name,
+      phone,
+      jobs(title),
+      ai_recommendations(summary),
+      candidate_scores(screening_score, overall_candidate_score)
+    `)
+    .eq('id', applicantId)
+    .single()
+
+  if (error) throw error
+  return data
+}
+
 async function updateWorkflowAfterJob(supabase: ReturnType<typeof createClient>, workflowRunId: string | null) {
   if (!workflowRunId) return
 
@@ -511,37 +530,59 @@ async function applyPlaceholderJobEffects(supabase: ReturnType<typeof createClie
   }
 
   if (job.job_type === 'voice_interview_analysis') {
-    const voiceScore = 88
+    const applicant = await buildVoiceInterviewContext(supabase, job.applicant_id)
+    const voiceResult = await createVoiceInterview({
+      provider: 'vapi',
+      applicantId: job.applicant_id,
+      applicantName: applicant.full_name ?? job.applicants?.full_name ?? 'Applicant',
+      applicantPhone: applicant.phone,
+      roleTitle: applicant.jobs?.title ?? job.applicants?.jobs?.title ?? 'Security role',
+      screeningSummary: applicant.ai_recommendations?.[0]?.summary ?? 'AI screening completed.',
+      workflowRunId: job.workflow_run_id,
+      supabaseUrl: Deno.env.get('SUPABASE_URL') ?? undefined,
+    })
+    provider = voiceResult.provider
+    const voiceNextStage = voiceResult.status === 'completed'
+      ? 'Voice Interview Complete'
+      : (job.applicants?.current_stage ?? 'License Verified')
+    const voiceInterviewStatus = voiceResult.status === 'completed' ? 'Complete' : 'Sent'
+
     effects.push(
       supabase
         .from('voice_interviews')
-        .insert({
+        .upsert({
           applicant_id: job.applicant_id,
-          provider: 'voice_ai_placeholder',
-          recording_url: 'https://example.com/voice-interview-placeholder',
-          transcript: 'Placeholder voice interview completed. Candidate communicated clearly, confirmed availability, and gave professional responses suitable for final HR review.',
-          score: voiceScore,
-          recommendation: 'Proceed to final in-person interview',
-          status: 'Complete',
-          completed_at: now,
-        }),
-    )
-    effects.push(
-      supabase
-        .from('candidate_scores')
-        .update({
-          voice_interview_score: voiceScore,
-          overall_candidate_score: voiceScore,
+          provider: voiceResult.provider,
+          provider_call_id: voiceResult.providerCallId,
+          interview_url: voiceResult.interviewUrl,
+          recording_url: voiceResult.provider === 'placeholder' ? voiceResult.interviewUrl : null,
+          transcript: voiceResult.transcript ?? 'Voice interview has been sent. Waiting for candidate completion and Vapi webhook callback.',
+          score: voiceResult.score ?? null,
+          recommendation: voiceResult.recommendation ?? 'Waiting for completed Vapi voice interview.',
+          status: voiceResult.status === 'completed' ? 'Complete' : 'Sent',
+          raw_provider_payload: voiceResult.rawProviderPayload ?? {},
+          completed_at: voiceResult.status === 'completed' ? now : null,
           updated_at: now,
-        })
-        .eq('applicant_id', job.applicant_id),
+        }, { onConflict: 'provider_call_id' }),
     )
+    if (voiceResult.status === 'completed' && Number.isFinite(voiceResult.score)) {
+      effects.push(
+        supabase
+          .from('candidate_scores')
+          .update({
+            voice_interview_score: voiceResult.score,
+            overall_candidate_score: voiceResult.score,
+            updated_at: now,
+          })
+          .eq('applicant_id', job.applicant_id),
+      )
+    }
     effects.push(
       supabase
         .from('applicants')
         .update({
-          current_stage: 'Voice Interview Complete',
-          interview_status: 'Complete',
+          current_stage: voiceNextStage,
+          interview_status: voiceInterviewStatus,
           status: 'Qualified',
           updated_at: now,
         })
@@ -553,9 +594,11 @@ async function applyPlaceholderJobEffects(supabase: ReturnType<typeof createClie
         .insert({
           applicant_id: job.applicant_id,
           from_stage: job.applicants?.current_stage ?? null,
-          to_stage: 'Voice Interview Complete',
+          to_stage: voiceNextStage,
           changed_by: 'edge_function_processor',
-          reason: 'Placeholder voice interview analysis completed automatically.',
+          reason: voiceResult.status === 'completed'
+            ? 'Fallback voice interview analysis completed automatically.'
+            : 'Vapi voice interview call was created and sent to the candidate.',
         }),
     )
   }
@@ -714,6 +757,18 @@ async function hasSubmittedAiAssessment(supabase: ReturnType<typeof createClient
     .select('id')
     .eq('applicant_id', applicantId)
     .eq('category', 'ai_assessment')
+    .limit(1)
+
+  if (error) throw error
+  return Boolean(data?.length)
+}
+
+async function hasCompletedVoiceInterview(supabase: ReturnType<typeof createClient>, applicantId: string) {
+  const { data, error } = await supabase
+    .from('voice_interviews')
+    .select('id')
+    .eq('applicant_id', applicantId)
+    .eq('status', 'Complete')
     .limit(1)
 
   if (error) throw error
@@ -904,6 +959,11 @@ Deno.serve(async (request) => {
         !(await hasSubmittedAiAssessment(supabase, job.applicant_id))
       ) {
         deferredJobs.push(await deferAutomationJob(supabase, job, 'Waiting for applicant to complete AI screening assessment.'))
+        continue
+      }
+
+      if (job.job_type === 'send_scheduling_link' && !(await hasCompletedVoiceInterview(supabase, job.applicant_id))) {
+        deferredJobs.push(await deferAutomationJob(supabase, job, 'Waiting for Vapi voice interview completion.'))
         continue
       }
 

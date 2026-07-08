@@ -24,13 +24,13 @@ This project is V1 demo-ready. The remaining work is mainly external provider co
 
 ## Real Integrations Still To Connect Together
 
-- Vapi or Bland voice interview provider
 - Microsoft Outlook Calendar
 - Production Google OAuth verification
 - Optional Twilio SMS
 - Optional Calendly/Cal.com scheduling links
 
 OpenAI screening is now wired through Supabase Edge Functions. It still requires `OPENAI_API_KEY` in Supabase secrets before it can produce live AI output.
+Vapi voice interviews are now wired through Supabase Edge Functions. They still require Vapi secrets, the Vapi SQL migration, and Edge Function deployment before live calls happen.
 
 ## Supabase Edge Functions
 
@@ -39,6 +39,7 @@ Deploy or redeploy these whenever their source changes:
 ```powershell
 supabase functions deploy process-automation-jobs
 supabase functions deploy evaluate-ai-screening
+supabase functions deploy vapi-voice-webhook
 supabase functions deploy sync-calendar-events
 supabase functions deploy calendar-oauth-start
 supabase functions deploy calendar-oauth-callback
@@ -73,6 +74,7 @@ supabase secrets set OPENAI_MODEL="gpt-4.1-mini"
 supabase secrets set VAPI_API_KEY=""
 supabase secrets set VAPI_ASSISTANT_ID=""
 supabase secrets set VAPI_PHONE_NUMBER_ID=""
+supabase secrets set VAPI_WEBHOOK_SECRET=""
 supabase secrets set BLAND_API_KEY=""
 supabase secrets set BLAND_PHONE_NUMBER_ID=""
 ```
@@ -104,7 +106,7 @@ Before onboarding real clients:
 
 ## Known V1 Limitations
 
-- Voice interview is intentionally simulated until Vapi/Bland is connected.
+- Voice interview uses Vapi when secrets and webhook deployment are complete; otherwise it safely falls back to placeholder behavior.
 - OpenAI scoring requires Supabase secrets and Edge Function deployment before live model output appears.
 - Microsoft Calendar is scaffolded but not completed.
 - Google OAuth may require production verification before external users can connect.
