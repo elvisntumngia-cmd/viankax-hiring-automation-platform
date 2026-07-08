@@ -896,6 +896,85 @@ async function processOrphanedEmailNotification(supabase: ReturnType<typeof crea
   })
 }
 
+async function recoverMissingVoiceInterviewJob(supabase: ReturnType<typeof createClient>) {
+  const now = new Date().toISOString()
+  const { data: applicants, error } = await supabase
+    .from('applicants')
+    .select(`
+      id,
+      full_name,
+      current_stage,
+      workflow_runs(id, run_status, created_at),
+      automation_jobs(id, job_type, job_status, created_at),
+      voice_interviews(provider, provider_call_id, status)
+    `)
+    .in('current_stage', ['Assessment Completed', 'License Verified', 'Voice Interview Complete', 'Ready for Review'])
+    .order('submitted_at', { ascending: false })
+    .limit(25)
+
+  if (error) throw error
+
+  const candidate = (applicants ?? []).find((applicant: Record<string, any>) => {
+    const jobs = applicant.automation_jobs ?? []
+    const voiceRows = applicant.voice_interviews ?? []
+    const hasReadyVoiceJob = jobs.some((job: Record<string, any>) =>
+      job.job_type === 'voice_interview_analysis' &&
+      ['queued', 'running'].includes(job.job_status),
+    )
+    const hasVapiCall = voiceRows.some((voice: Record<string, any>) =>
+      voice.provider === 'vapi' &&
+      Boolean(voice.provider_call_id),
+    )
+
+    return !hasReadyVoiceJob && !hasVapiCall
+  })
+
+  if (!candidate) return null
+
+  const workflowRun = [...(candidate.workflow_runs ?? [])].sort((first: Record<string, any>, second: Record<string, any>) =>
+    new Date(second.created_at ?? 0).getTime() - new Date(first.created_at ?? 0).getTime(),
+  )[0]
+
+  const { data: insertedJob, error: insertError } = await supabase
+    .from('automation_jobs')
+    .insert({
+      applicant_id: candidate.id,
+      workflow_run_id: workflowRun?.id ?? null,
+      job_type: 'voice_interview_analysis',
+      job_label: 'Create Vapi voice interview',
+      job_status: 'queued',
+      priority: 6,
+      scheduled_for: now,
+      payload: {
+        provider: 'vapi',
+        mode: 'recovered_missing_voice_interview',
+      },
+    })
+    .select('id, job_type, job_label, job_status, scheduled_for')
+    .single()
+
+  if (insertError) throw insertError
+
+  await supabase.from('automation_events').insert({
+    applicant_id: candidate.id,
+    event_type: 'missing_voice_job_recovered',
+    event_status: 'complete',
+    event_label: 'Missing Voice Job Recovered',
+    metadata: {
+      automationJobId: insertedJob.id,
+      provider: 'vapi',
+      description: 'Recovered an applicant that had no ready voice interview job and no Vapi call record.',
+    },
+  })
+
+  return jsonResponse({
+    processed: false,
+    recovered: true,
+    message: `Recovered missing Vapi voice interview job for ${candidate.full_name}. Click Run next job again to create the Vapi call.`,
+    job: insertedJob,
+  })
+}
+
 Deno.serve(async (request) => {
   if (request.method === 'OPTIONS') {
     return new Response('ok', { headers: corsHeaders })
@@ -944,6 +1023,8 @@ Deno.serve(async (request) => {
 
       if (!job) {
         if (!processedJobs.length && !deferredJobs.length) {
+          const recoveredVoiceJob = await recoverMissingVoiceInterviewJob(supabase)
+          if (recoveredVoiceJob) return recoveredVoiceJob
           return processOrphanedEmailNotification(supabase)
         }
         break

@@ -33,6 +33,12 @@ Run the SQL migration:
 # Copy and run docs/supabase-vapi-voice-integration.sql in Supabase SQL Editor
 ```
 
+If existing applicants already passed AI screening before Vapi was connected, run:
+
+```powershell
+# Copy and run docs/supabase-vapi-voice-job-recovery.sql in Supabase SQL Editor
+```
+
 Deploy functions:
 
 ```powershell
@@ -55,6 +61,7 @@ supabase secrets set VAPI_WEBHOOK_SECRET=""
 2. The call includes a server URL pointing to `vapi-voice-webhook`.
 3. The webhook updates `voice_interviews`, `candidate_scores`, applicant stage/status, automation events, and wakes the scheduling job.
 4. If Vapi secrets are missing, the function uses a clearly marked placeholder completion so demos still work.
+5. If the queue is empty but an eligible applicant has no Vapi call record, the processor can recover a missing voice job.
 
 ## Future Enhancements
 
@@ -62,4 +69,3 @@ supabase secrets set VAPI_WEBHOOK_SECRET=""
 2. Add Vapi structured outputs or scorecards for communication, professionalism, confidence, availability, and scenario readiness.
 3. Add stronger webhook signature verification once Vapi account settings are finalized.
 4. Add retry handling for failed outbound calls.
-
