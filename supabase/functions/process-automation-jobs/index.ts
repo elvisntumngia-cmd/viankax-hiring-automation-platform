@@ -950,7 +950,7 @@ async function recoverMissingVoiceInterviewJob(supabase: ReturnType<typeof creat
         mode: 'recovered_missing_voice_interview',
       },
     })
-    .select('id, job_type, job_label, job_status, scheduled_for')
+    .select('id, applicant_id, workflow_run_id, job_type, job_label, job_status, priority, scheduled_for, attempts, last_error, payload')
     .single()
 
   if (insertError) throw insertError
@@ -967,11 +967,64 @@ async function recoverMissingVoiceInterviewJob(supabase: ReturnType<typeof creat
     },
   })
 
+  const recoveredJob = {
+    ...insertedJob,
+    applicants: {
+      full_name: candidate.full_name,
+      current_stage: candidate.current_stage,
+    },
+  } as AutomationJob
+
+  const { error: runningError } = await supabase
+    .from('automation_jobs')
+    .update({
+      job_status: 'running',
+      attempts: (recoveredJob.attempts ?? 0) + 1,
+      updated_at: now,
+    })
+    .eq('id', recoveredJob.id)
+
+  if (runningError) throw runningError
+
+  try {
+    await applyPlaceholderJobEffects(supabase, recoveredJob)
+
+    const { error: completedError } = await supabase
+      .from('automation_jobs')
+      .update({
+        job_status: 'completed',
+        last_error: null,
+        updated_at: new Date().toISOString(),
+      })
+      .eq('id', recoveredJob.id)
+
+    if (completedError) throw completedError
+    await updateWorkflowAfterJob(supabase, recoveredJob.workflow_run_id)
+  } catch (processError) {
+    await supabase
+      .from('automation_jobs')
+      .update({
+        job_status: 'failed',
+        last_error: errorMessage(processError),
+        updated_at: new Date().toISOString(),
+      })
+      .eq('id', recoveredJob.id)
+
+    await updateWorkflowAfterJob(supabase, recoveredJob.workflow_run_id)
+    throw processError
+  }
+
   return jsonResponse({
-    processed: false,
+    processed: true,
     recovered: true,
-    message: `Recovered missing Vapi voice interview job for ${candidate.full_name}. Click Run next job again to create the Vapi call.`,
-    job: insertedJob,
+    message: `Recovered and processed Vapi voice interview job for ${candidate.full_name}.`,
+    job: {
+      id: recoveredJob.id,
+      type: recoveredJob.job_type,
+      label: recoveredJob.job_label,
+      status: 'completed',
+      applicantName: candidate.full_name,
+    },
   })
 }
 
