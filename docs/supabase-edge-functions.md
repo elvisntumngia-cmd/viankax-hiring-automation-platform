@@ -1,8 +1,9 @@
 # Supabase Edge Functions
 
-This project includes a deploy-ready placeholder automation processor:
+This project includes deploy-ready automation Edge Functions:
 
 - `supabase/functions/process-automation-jobs/index.ts`
+- `supabase/functions/evaluate-ai-screening/index.ts`
 
 The React dashboard now tries to call this Edge Function first. If it is not deployed yet, the app falls back to the local demo processor so development can continue.
 
@@ -45,6 +46,7 @@ From the project root:
 
 ```powershell
 supabase functions deploy process-automation-jobs
+supabase functions deploy evaluate-ai-screening
 ```
 
 ## Required Secrets
@@ -72,6 +74,21 @@ Notes:
 - `RESEND_REPLY_TO` is optional, but useful when candidates reply.
 - If `RESEND_API_KEY` is missing, the function still completes using placeholder email behavior.
 
+## Optional OpenAI Screening Secrets
+
+To use live OpenAI evaluation instead of the safe fallback evaluator:
+
+```powershell
+supabase secrets set OPENAI_API_KEY="your_openai_api_key"
+supabase secrets set OPENAI_MODEL="gpt-4.1-mini"
+```
+
+Notes:
+
+- `OPENAI_MODEL` is optional.
+- Keep `OPENAI_API_KEY` only in Supabase secrets.
+- The dashboard/front-end never calls OpenAI directly.
+
 ## Test From Dashboard
 
 1. Open `/dashboard`.
@@ -84,16 +101,17 @@ If the dashboard says `No queued automation jobs are ready` but `notification_qu
 
 ## Current Function Behavior
 
-The function processes one queued job at a time and still uses placeholder logic:
+The function processes queued jobs and uses real integrations where configured:
 
 - marks queued job as `running`
-- simulates provider work
+- evaluates AI screening with OpenAI when `OPENAI_API_KEY` is configured
+- uses safe placeholder behavior when provider keys are missing
 - updates notification records where applicable
 - sends real email through Resend only when `RESEND_API_KEY` is configured
 - sends branded HTML and plain-text email content
 - writes automation events
 - updates stage history for resume/license jobs
-- marks job `completed`
+- marks jobs `completed`
 - updates workflow run status
 
-Real Twilio, OpenAI, Vapi/Bland, and scheduling integrations come later. Resend email is ready once the function is deployed and the Resend secrets are set.
+Real Twilio and Vapi/Bland integrations come later. Resend and OpenAI are ready once the functions are deployed and the required secrets are set.

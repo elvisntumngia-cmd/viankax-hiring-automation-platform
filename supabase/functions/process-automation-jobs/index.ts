@@ -1,4 +1,5 @@
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2'
+import { evaluateAiScreening } from '../_shared/openai-screening.ts'
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
@@ -162,7 +163,7 @@ function processedEventForJob(job: AutomationJob, provider = 'placeholder') {
     send_confirmation_email: ['confirmation_email_sent', 'Confirmation Email Sent', 'Placeholder email confirmation was marked as sent.'],
     parse_resume: ['resume_screened', 'Resume Screened', 'Placeholder resume parsing completed and candidate moved forward.'],
     send_ai_assessment: ['ai_assessment_sent', 'AI Assessment Sent', 'Placeholder AI screening assessment invite was queued for the candidate.'],
-    evaluate_ai_assessment: ['ai_screening_evaluated', 'AI Screening Evaluated', 'Placeholder AI screening evaluation generated structured candidate scores.'],
+    evaluate_ai_assessment: ['ai_screening_evaluated', 'AI Screening Evaluated', 'AI screening evaluation generated structured candidate scores.'],
     verify_license: ['license_verification_completed', 'License Verification Completed', 'Placeholder license verification completed.'],
     send_scheduling_link: ['scheduling_link_sent', 'Scheduling Link Sent', 'Placeholder scheduling link was marked as sent.'],
     voice_interview_analysis: ['voice_interview_analyzed', 'Voice Interview Analyzed', 'Placeholder voice interview analysis completed.'],
@@ -261,6 +262,40 @@ async function sendResendEmail(notification: NotificationRow) {
     providerMessageId: result?.id ?? null,
     provider: 'resend',
     note: 'Email sent with Resend.',
+  }
+}
+
+async function buildAiScreeningContext(supabase: ReturnType<typeof createClient>, applicantId: string) {
+  const [{ data: applicant, error: applicantError }, { data: answers, error: answersError }] = await Promise.all([
+    supabase
+      .from('applicants')
+      .select(`
+        id,
+        full_name,
+        email,
+        phone,
+        location,
+        current_stage,
+        knockout_result,
+        license_status,
+        jobs(title, location, license_requirements, shift_options, site_id, open_shift_id),
+        assigned_shift:open_shifts!applicants_open_shift_id_fkey(*, job_sites(*))
+      `)
+      .eq('id', applicantId)
+      .single(),
+    supabase
+      .from('screening_answers')
+      .select('question, answer, category')
+      .eq('applicant_id', applicantId)
+      .order('created_at', { ascending: true }),
+  ])
+
+  if (applicantError) throw applicantError
+  if (answersError) throw answersError
+
+  return {
+    applicant,
+    screeningAnswers: Object.fromEntries((answers ?? []).map((answer: Record<string, string>) => [answer.question, answer.answer ?? ''])),
   }
 }
 
@@ -367,18 +402,37 @@ async function applyPlaceholderJobEffects(supabase: ReturnType<typeof createClie
   }
 
   if (job.job_type === 'evaluate_ai_assessment') {
+    const context = await buildAiScreeningContext(supabase, job.applicant_id)
+    const evaluation = await evaluateAiScreening(context)
+    provider = evaluation.provider
+    const recommendationStatus = evaluation.screeningRecommendation === 'Not Recommended'
+      ? 'Needs Review'
+      : 'Qualified'
+    const nextStage = evaluation.suggestedNextStep === 'Reject'
+      ? 'Ready for Review'
+      : 'Assessment Completed'
+
     effects.push(
       supabase
         .from('ai_screening_tasks')
         .update({
           task_status: 'completed',
-          ai_summary: 'Placeholder AI screening found solid role fit, professional communication, and workable availability. Review risk flags before advancing.',
-          role_fit_score: 84,
-          professionalism_score: 86,
-          communication_score: 82,
-          availability_score: 80,
-          risk_flags: [],
-          recommendation: 'Qualified',
+          ai_summary: evaluation.aiSummary,
+          role_fit_score: evaluation.experienceScore,
+          professionalism_score: evaluation.communicationScore,
+          communication_score: evaluation.communicationScore,
+          availability_score: evaluation.availabilityScore,
+          risk_flags: evaluation.riskFlags,
+          recommendation: evaluation.screeningRecommendation,
+          candidate_context: {
+            ...(context as Record<string, unknown>),
+            placementSignals: evaluation.placementSignals,
+            strengths: evaluation.strengths,
+            concerns: evaluation.concerns,
+            suggestedNextStep: evaluation.suggestedNextStep,
+            provider: evaluation.provider,
+            model: evaluation.model,
+          },
           completed_at: now,
           updated_at: now,
         })
@@ -388,31 +442,32 @@ async function applyPlaceholderJobEffects(supabase: ReturnType<typeof createClie
     effects.push(
       supabase
         .from('candidate_scores')
-        .update({
-          screening_score: 84,
-          overall_candidate_score: 86,
+        .upsert({
+          applicant_id: job.applicant_id,
+          eligibility_score: evaluation.eligibilityScore,
+          screening_score: evaluation.overallScreeningScore,
+          overall_candidate_score: evaluation.overallScreeningScore,
           updated_at: now,
-        })
-        .eq('applicant_id', job.applicant_id),
+        }, { onConflict: 'applicant_id' }),
     )
     effects.push(
       supabase
         .from('ai_recommendations')
-        .update({
-          recommendation: 'Qualified',
-          confidence: 86,
-          summary: 'Placeholder AI screening indicates the candidate is qualified for HR review, pending compliance and interview steps.',
-          risk_flags: [],
+        .upsert({
+          applicant_id: job.applicant_id,
+          recommendation: evaluation.screeningRecommendation,
+          confidence: evaluation.overallScreeningScore,
+          summary: evaluation.aiSummary,
+          risk_flags: evaluation.riskFlags,
           updated_at: now,
-        })
-        .eq('applicant_id', job.applicant_id),
+        }, { onConflict: 'applicant_id' }),
     )
     effects.push(
       supabase
         .from('applicants')
         .update({
-          current_stage: 'Assessment Completed',
-          status: 'Qualified',
+          current_stage: nextStage,
+          status: recommendationStatus,
           updated_at: now,
         })
         .eq('id', job.applicant_id),
@@ -423,9 +478,9 @@ async function applyPlaceholderJobEffects(supabase: ReturnType<typeof createClie
         .insert({
           applicant_id: job.applicant_id,
           from_stage: job.applicants?.current_stage ?? null,
-          to_stage: 'Assessment Completed',
+          to_stage: nextStage,
           changed_by: 'edge_function_processor',
-          reason: 'Placeholder AI screening evaluation completed.',
+          reason: `${evaluation.provider === 'openai' ? 'OpenAI' : 'Fallback'} AI screening evaluation completed. ${evaluation.suggestedNextStep}.`,
         }),
     )
   }
