@@ -900,6 +900,101 @@ async function processOrphanedEmailNotification(supabase: ReturnType<typeof crea
   })
 }
 
+async function recoverMissingAiAssessmentInvite(supabase: ReturnType<typeof createClient>) {
+  const now = new Date().toISOString()
+  const appBaseUrl = Deno.env.get('APP_BASE_URL') ?? Deno.env.get('PUBLIC_APP_URL') ?? 'http://localhost:5173'
+  const { data: applicants, error } = await supabase
+    .from('applicants')
+    .select(`
+      id,
+      full_name,
+      email,
+      phone,
+      knockout_result,
+      submitted_at,
+      notification_queue(id, subject, notification_status, metadata),
+      screening_answers(id, category)
+    `)
+    .neq('knockout_result', 'Failed')
+    .order('submitted_at', { ascending: false })
+    .limit(25)
+
+  if (error) throw error
+
+  const candidate = (applicants ?? []).find((applicant: Record<string, any>) => {
+    const notifications = applicant.notification_queue ?? []
+    const answers = applicant.screening_answers ?? []
+    const hasAiInvite = notifications.some((notification: Record<string, any>) =>
+      notification.subject === 'Complete your ViankaX screening assessment' ||
+      notification.metadata?.template === 'ai_assessment_invite',
+    )
+    const hasAiAnswers = answers.some((answer: Record<string, any>) => answer.category === 'ai_assessment')
+
+    return applicant.email && !hasAiInvite && !hasAiAnswers
+  })
+
+  if (!candidate) return null
+
+  const notification: NotificationRow = {
+    id: crypto.randomUUID(),
+    applicant_id: candidate.id,
+    recipient: candidate.email,
+    subject: 'Complete your ViankaX screening assessment',
+    message: `Please complete your AI screening assessment so the hiring team can continue reviewing your application: ${appBaseUrl}/screening/${candidate.id}`,
+    metadata: {
+      template: 'ai_assessment_invite',
+      assessmentUrl: `${appBaseUrl}/screening/${candidate.id}`,
+      recovered: true,
+    },
+    applicants: {
+      full_name: candidate.full_name,
+    },
+  }
+  const emailResult = await sendResendEmail(notification)
+
+  const { error: notificationError } = await supabase
+    .from('notification_queue')
+    .insert({
+      applicant_id: candidate.id,
+      channel: 'email',
+      recipient: candidate.email,
+      subject: notification.subject,
+      message: notification.message,
+      notification_status: 'sent',
+      provider_message_id: emailResult.providerMessageId,
+      scheduled_for: now,
+      sent_at: now,
+      metadata: {
+        ...notification.metadata,
+        provider: emailResult.provider,
+        note: `${emailResult.note} Recovered missing AI screening invite.`,
+      },
+    })
+
+  if (notificationError) throw notificationError
+
+  await supabase.from('automation_events').insert({
+    applicant_id: candidate.id,
+    event_type: 'missing_ai_assessment_invite_recovered',
+    event_status: 'complete',
+    event_label: 'Missing AI Assessment Invite Recovered',
+    metadata: {
+      provider: emailResult.provider,
+      description: 'Recovered and sent a missing AI screening assessment invite.',
+    },
+  })
+
+  return jsonResponse({
+    processed: true,
+    recovered: true,
+    message: `Recovered and sent AI screening assessment invite for ${candidate.full_name}.`,
+    notification: {
+      provider: emailResult.provider,
+      providerMessageId: emailResult.providerMessageId,
+    },
+  })
+}
+
 async function recoverMissingVoiceInterviewJob(supabase: ReturnType<typeof createClient>) {
   const now = new Date().toISOString()
   const { data: applicants, error } = await supabase
@@ -1080,9 +1175,31 @@ Deno.serve(async (request) => {
 
       if (!job) {
         if (!processedJobs.length && !deferredJobs.length) {
-          const recoveredVoiceJob = await recoverMissingVoiceInterviewJob(supabase)
-          if (recoveredVoiceJob) return recoveredVoiceJob
-          return processOrphanedEmailNotification(supabase)
+          const recoveryErrors: string[] = []
+          try {
+            const recoveredInvite = await recoverMissingAiAssessmentInvite(supabase)
+            if (recoveredInvite) return recoveredInvite
+          } catch (recoveryError) {
+            recoveryErrors.push(`AI invite recovery skipped: ${errorMessage(recoveryError)}`)
+          }
+
+          try {
+            const recoveredVoiceJob = await recoverMissingVoiceInterviewJob(supabase)
+            if (recoveredVoiceJob) return recoveredVoiceJob
+          } catch (recoveryError) {
+            recoveryErrors.push(`Voice recovery skipped: ${errorMessage(recoveryError)}`)
+          }
+
+          const orphanedResult = await processOrphanedEmailNotification(supabase)
+          if (recoveryErrors.length) {
+            const body = await orphanedResult.json()
+            return jsonResponse({
+              ...body,
+              recoveryWarnings: recoveryErrors,
+            })
+          }
+
+          return orphanedResult
         }
         break
       }
