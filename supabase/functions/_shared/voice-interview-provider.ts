@@ -28,6 +28,17 @@ function requiredEnv(name: string) {
   return value
 }
 
+function toE164PhoneNumber(phone: string) {
+  const trimmed = String(phone ?? '').trim()
+  if (/^\+[1-9]\d{7,14}$/.test(trimmed)) return trimmed
+
+  const digits = trimmed.replace(/\D/g, '')
+  if (digits.length === 10) return `+1${digits}`
+  if (digits.length === 11 && digits.startsWith('1')) return `+${digits}`
+
+  throw new Error(`Candidate phone number must be E.164 format for Vapi. Received "${phone}". For US numbers use +1 followed by 10 digits.`)
+}
+
 export async function createVoiceInterview(request: VoiceInterviewRequest): Promise<VoiceInterviewResult> {
   if (request.provider === 'vapi') {
     const apiKey = Deno.env.get('VAPI_API_KEY')
@@ -49,9 +60,7 @@ export async function createVoiceInterview(request: VoiceInterviewRequest): Prom
       }
     }
 
-    const serverUrl = request.supabaseUrl
-      ? `${request.supabaseUrl.replace(/\/$/, '')}/functions/v1/vapi-voice-webhook`
-      : undefined
+    const customerNumber = toE164PhoneNumber(request.applicantPhone)
     const response = await fetch('https://api.vapi.ai/call', {
       method: 'POST',
       headers: {
@@ -62,7 +71,7 @@ export async function createVoiceInterview(request: VoiceInterviewRequest): Prom
         assistantId,
         phoneNumberId,
         customer: {
-          number: request.applicantPhone,
+          number: customerNumber,
           name: request.applicantName,
         },
         metadata: {
@@ -78,7 +87,6 @@ export async function createVoiceInterview(request: VoiceInterviewRequest): Prom
             screeningSummary: request.screeningSummary ?? 'Screening summary pending.',
           },
         },
-        ...(serverUrl ? { serverUrl } : {}),
       }),
     })
 

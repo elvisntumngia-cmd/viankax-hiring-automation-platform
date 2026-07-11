@@ -39,6 +39,12 @@ If existing applicants already passed AI screening before Vapi was connected, ru
 # Copy and run docs/supabase-vapi-voice-job-recovery.sql in Supabase SQL Editor
 ```
 
+If Vapi jobs failed before the phone/payload fixes, run:
+
+```powershell
+# Copy and run docs/supabase-vapi-retry-failed-jobs.sql in Supabase SQL Editor
+```
+
 Deploy functions:
 
 ```powershell
@@ -55,10 +61,16 @@ supabase secrets set VAPI_PHONE_NUMBER_ID=""
 supabase secrets set VAPI_WEBHOOK_SECRET=""
 ```
 
+Vapi requirements:
+
+- `VAPI_API_KEY` must be the private/server API key.
+- Candidate phone numbers must be valid E.164 format. US numbers are normalized to `+1XXXXXXXXXX` automatically when possible.
+- The outbound call payload does not include `serverUrl`; configure callbacks in Vapi dashboard/assistant settings if your account requires webhook registration there.
+
 ## Current Implementation
 
 1. `voice_interview_analysis` creates a Vapi call when Vapi secrets are set.
-2. The call includes a server URL pointing to `vapi-voice-webhook`.
+2. The call stores applicant metadata so provider callbacks can identify the applicant.
 3. The webhook updates `voice_interviews`, `candidate_scores`, applicant stage/status, automation events, and wakes the scheduling job.
 4. If Vapi secrets are missing, the function uses a clearly marked placeholder completion so demos still work.
 5. If the queue is empty but an eligible applicant has no Vapi call record, the processor can recover a missing voice job.
