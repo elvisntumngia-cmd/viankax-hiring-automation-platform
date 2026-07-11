@@ -9,6 +9,8 @@ const weekDays = ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Satur
 const commuteOptions = ['10 miles', '20 miles', '30+ miles']
 const experienceOptions = ['No experience', 'Less than 1 year', '1-2 years', '3-5 years', '5+ years']
 const environments = ['Residential', 'Commercial', 'Retail', 'Construction', 'Events', 'Corporate', 'Mobile Patrol', 'Armed Post', 'None', 'Other']
+const uuidPattern = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i
+const loadingTimeoutMs = 12000
 
 const initialAnswers = {
   authorizedToWork: '',
@@ -172,7 +174,17 @@ function AiScreeningPage() {
       setError('')
 
       try {
-        const result = await fetchApplicantForScreening(applicantId)
+        if (!uuidPattern.test(applicantId ?? '')) {
+          throw new Error('This screening link is missing a valid applicant ID.')
+        }
+
+        const timeout = new Promise((_, reject) => {
+          window.setTimeout(() => {
+            reject(new Error('The screening page could not reach Supabase. Refresh the page or try again from the desktop app URL.'))
+          }, loadingTimeoutMs)
+        })
+        const result = await Promise.race([fetchApplicantForScreening(applicantId), timeout])
+
         if (!mounted) return
         setApplicant(result)
         setStatus(result ? 'success' : 'not_found')
@@ -234,9 +246,18 @@ function AiScreeningPage() {
         <p className="text-sm font-semibold text-red-600">Screening unavailable</p>
         <h1 className="mt-2 text-2xl font-semibold text-[#111827]">We could not load this assessment</h1>
         <p className="mt-3 text-[#6B7280]">{error || 'This link may be invalid or expired.'}</p>
-        <Link to="/jobs" className="mt-5 inline-flex rounded-md bg-[#0084FF] px-5 py-3 font-semibold text-white">
-          Return to jobs
-        </Link>
+        <div className="mt-5 flex flex-wrap gap-3">
+          <button
+            type="button"
+            onClick={() => window.location.reload()}
+            className="inline-flex rounded-md bg-[#0084FF] px-5 py-3 font-semibold text-white"
+          >
+            Retry
+          </button>
+          <Link to="/jobs" className="inline-flex rounded-md border border-[#E5E7EB] bg-white px-5 py-3 font-semibold text-[#111827]">
+            Return to jobs
+          </Link>
+        </div>
       </section>
     )
   }
