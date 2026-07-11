@@ -106,6 +106,7 @@ Before onboarding real clients:
 
 ## Known V1 Limitations
 
+- Demo automation timing is intentionally fast. AI screening invites and retry checks run seconds apart for demos; production should use calmer retry windows and a scheduled runner.
 - Voice interview uses Vapi when secrets and webhook deployment are complete; otherwise it safely falls back to placeholder behavior.
 - OpenAI scoring requires Supabase secrets and Edge Function deployment before live model output appears.
 - Microsoft Calendar is scaffolded but not completed.

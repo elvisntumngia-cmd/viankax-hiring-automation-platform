@@ -54,6 +54,10 @@ const defaultCalendarSettings: CalendarSettings = {
   schedulingWindow: '3 business days after voice interview',
 }
 
+const demoAutomationDelays = {
+  deferredRetryMs: 15 * 1000,
+}
+
 function jsonResponse(body: Record<string, unknown>, status = 200) {
   return Response.json(body, { status, headers: corsHeaders })
 }
@@ -776,7 +780,7 @@ async function hasCompletedVoiceInterview(supabase: ReturnType<typeof createClie
 }
 
 async function deferAiAssessmentEvaluation(supabase: ReturnType<typeof createClient>, job: AutomationJob) {
-  const nextCheckAt = new Date(Date.now() + 10 * 60 * 1000).toISOString()
+  const nextCheckAt = new Date(Date.now() + demoAutomationDelays.deferredRetryMs).toISOString()
   const { error } = await supabase
     .from('automation_jobs')
     .update({
@@ -805,7 +809,7 @@ async function deferAiAssessmentEvaluation(supabase: ReturnType<typeof createCli
 }
 
 async function deferAutomationJob(supabase: ReturnType<typeof createClient>, job: AutomationJob, reason: string) {
-  const nextCheckAt = new Date(Date.now() + 10 * 60 * 1000).toISOString()
+  const nextCheckAt = new Date(Date.now() + demoAutomationDelays.deferredRetryMs).toISOString()
   const { error } = await supabase
     .from('automation_jobs')
     .update({

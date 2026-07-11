@@ -13,6 +13,11 @@ const pipelineStages = [
   'Rejected',
 ]
 
+const demoAutomationDelays = {
+  aiAssessmentInviteMs: 15 * 1000,
+  deferredRetryMs: 15 * 1000,
+}
+
 export const defaultCalendarSettings = {
   provider: 'Internal calendar',
   interviewerEmail: 'hr@viankax.com',
@@ -1837,7 +1842,7 @@ async function hasSubmittedAiAssessment(applicantId) {
 }
 
 async function deferAiAssessmentEvaluation(job) {
-  const nextCheckAt = new Date(Date.now() + 10 * 60 * 1000).toISOString()
+  const nextCheckAt = new Date(Date.now() + demoAutomationDelays.deferredRetryMs).toISOString()
   const { error } = await supabase
     .from('automation_jobs')
     .update({
@@ -1859,7 +1864,7 @@ async function deferAiAssessmentEvaluation(job) {
 }
 
 async function deferAutomationJob(job, reason) {
-  const nextCheckAt = new Date(Date.now() + 10 * 60 * 1000).toISOString()
+  const nextCheckAt = new Date(Date.now() + demoAutomationDelays.deferredRetryMs).toISOString()
   const { error } = await supabase
     .from('automation_jobs')
     .update({
@@ -2102,7 +2107,7 @@ async function createWorkflowRun(applicantId, application) {
 function automationJobRows(applicantId, workflowRunId, application, uploadedDocuments) {
   const now = new Date()
   const scheduledNow = now.toISOString()
-  const scheduledInFiveMinutes = new Date(now.getTime() + 5 * 60 * 1000).toISOString()
+  const scheduledAiAssessmentInvite = new Date(now.getTime() + demoAutomationDelays.aiAssessmentInviteMs).toISOString()
 
   if (application.knockoutResult === 'Failed') {
     return [
@@ -2160,7 +2165,7 @@ function automationJobRows(applicantId, workflowRunId, application, uploadedDocu
       job_label: 'Send AI screening assessment link',
       job_status: 'queued',
       priority: 4,
-      scheduled_for: scheduledInFiveMinutes,
+      scheduled_for: scheduledAiAssessmentInvite,
       payload: { channel: 'sms_email' },
     },
     {
@@ -2214,7 +2219,7 @@ function notificationRows(applicantId, application, automationJobs = []) {
   if (application.knockoutResult === 'Failed') return []
 
   const scheduledNow = new Date().toISOString()
-  const aiAssessmentScheduledFor = new Date(Date.now() + 5 * 60 * 1000).toISOString()
+  const aiAssessmentScheduledFor = new Date(Date.now() + demoAutomationDelays.aiAssessmentInviteMs).toISOString()
   const appOrigin = typeof window !== 'undefined' ? window.location.origin : ''
   const assessmentUrl = appOrigin ? `${appOrigin}/screening/${applicantId}` : `/screening/${applicantId}`
 
