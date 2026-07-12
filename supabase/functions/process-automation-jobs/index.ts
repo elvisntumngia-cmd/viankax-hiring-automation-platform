@@ -434,6 +434,7 @@ async function applyPlaceholderJobEffects(supabase: ReturnType<typeof createClie
     const nextStage = evaluation.suggestedNextStep === 'Reject'
       ? 'Ready for Review'
       : 'Assessment Completed'
+    const shouldStartVoiceInterview = evaluation.suggestedNextStep === 'Proceed to voice interview'
 
     effects.push(
       supabase
@@ -505,6 +506,21 @@ async function applyPlaceholderJobEffects(supabase: ReturnType<typeof createClie
           changed_by: 'edge_function_processor',
           reason: `${evaluation.provider === 'openai' ? 'OpenAI' : 'Fallback'} AI screening evaluation completed. ${evaluation.suggestedNextStep}.`,
         }),
+    )
+    effects.push(
+      supabase
+        .from('automation_jobs')
+        .update({
+          job_status: shouldStartVoiceInterview ? 'queued' : 'blocked',
+          scheduled_for: now,
+          last_error: shouldStartVoiceInterview
+            ? null
+            : `AI screening recommended: ${evaluation.suggestedNextStep}.`,
+          updated_at: now,
+        })
+        .eq('applicant_id', job.applicant_id)
+        .eq('job_type', 'voice_interview_analysis')
+        .in('job_status', ['queued', 'running', 'failed']),
     )
   }
 

@@ -1203,6 +1203,7 @@ export async function submitAiScreeningAssessment(applicantId, answers, applican
 
   const now = new Date().toISOString()
   const scores = scoreAssessmentAnswers(answers, applicant)
+  const shouldStartVoiceInterview = scores.suggestedNextStep === 'Proceed to voice interview'
   const answerRows = Object.entries(answers).map(([question, answer]) => ({
     applicant_id: applicantId,
     question: aiScreeningAnswerLabels[question] ?? question,
@@ -1273,6 +1274,19 @@ export async function submitAiScreeningAssessment(applicantId, answers, applican
       .eq('applicant_id', applicantId)
       .eq('job_type', 'evaluate_ai_assessment')
       .in('job_status', ['queued', 'running']),
+    supabase
+      .from('automation_jobs')
+      .update({
+        job_status: shouldStartVoiceInterview ? 'queued' : 'blocked',
+        scheduled_for: now,
+        last_error: shouldStartVoiceInterview
+          ? null
+          : `AI screening recommended: ${scores.suggestedNextStep}.`,
+        updated_at: now,
+      })
+      .eq('applicant_id', applicantId)
+      .eq('job_type', 'voice_interview_analysis')
+      .in('job_status', ['queued', 'running', 'failed']),
     supabase
       .from('automation_events')
       .update({
@@ -1356,10 +1370,26 @@ export async function submitAiScreeningAssessment(applicantId, answers, applican
   const operationError = results.find((result) => result.error)?.error
   if (operationError) throw operationError
 
+  let automationKickoff = null
+  if (shouldStartVoiceInterview) {
+    try {
+      const { data, error } = await supabase.functions.invoke('process-automation-jobs', {
+        body: { mode: 'ai-screening-submit-kickoff', maxJobs: 3 },
+      })
+
+      automationKickoff = error
+        ? { ok: false, message: error.message }
+        : { ok: true, message: data?.message ?? 'Automation kickoff requested.', data }
+    } catch (kickoffError) {
+      automationKickoff = { ok: false, message: kickoffError.message }
+    }
+  }
+
   return {
     ok: true,
     scores,
     summary: aiSummary,
+    automationKickoff,
   }
 }
 
