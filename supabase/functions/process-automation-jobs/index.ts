@@ -520,7 +520,7 @@ async function applyPlaceholderJobEffects(supabase: ReturnType<typeof createClie
         })
         .eq('applicant_id', job.applicant_id)
         .eq('job_type', 'voice_interview_analysis')
-        .in('job_status', ['queued', 'running', 'failed']),
+        .in('job_status', ['blocked', 'queued', 'running', 'failed']),
     )
   }
 

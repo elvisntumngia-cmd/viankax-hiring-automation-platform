@@ -1286,7 +1286,7 @@ export async function submitAiScreeningAssessment(applicantId, answers, applican
       })
       .eq('applicant_id', applicantId)
       .eq('job_type', 'voice_interview_analysis')
-      .in('job_status', ['queued', 'running', 'failed']),
+      .in('job_status', ['blocked', 'queued', 'running', 'failed']),
     supabase
       .from('automation_events')
       .update({
@@ -2223,9 +2223,10 @@ function automationJobRows(applicantId, workflowRunId, application, uploadedDocu
       workflow_run_id: workflowRunId,
       job_type: 'voice_interview_analysis',
       job_label: 'Analyze voice interview',
-      job_status: 'queued',
+      job_status: 'blocked',
       priority: 6,
       scheduled_for: scheduledNow,
+      last_error: 'Waiting for AI screening recommendation.',
       payload: { provider: 'voice_ai_placeholder', mode: 'automated_voice_screening' },
     },
     {
@@ -2233,9 +2234,10 @@ function automationJobRows(applicantId, workflowRunId, application, uploadedDocu
       workflow_run_id: workflowRunId,
       job_type: 'send_scheduling_link',
       job_label: 'Schedule final in-person interview',
-      job_status: 'queued',
+      job_status: 'blocked',
       priority: 7,
       scheduled_for: scheduledNow,
+      last_error: 'Waiting for voice interview completion.',
       payload: { provider: 'calendar_placeholder', mode: 'auto_schedule_final_interview' },
     },
   ]

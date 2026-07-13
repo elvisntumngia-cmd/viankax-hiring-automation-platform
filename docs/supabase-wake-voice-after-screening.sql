@@ -12,7 +12,7 @@ set
     'mode', 'wake_after_ai_screening_completed'
   )
 where job_type = 'voice_interview_analysis'
-  and job_status in ('queued', 'failed')
+  and job_status in ('blocked', 'queued', 'failed')
   and exists (
     select 1
     from screening_answers
