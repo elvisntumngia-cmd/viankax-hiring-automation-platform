@@ -2088,6 +2088,22 @@ async function processNextAutomationJobWithEdgeFunction() {
   }
 }
 
+async function kickAutomationRunner(mode, maxJobs = 1) {
+  if (!isSupabaseConfigured) return null
+
+  try {
+    const { data, error } = await supabase.functions.invoke('process-automation-jobs', {
+      body: { mode, maxJobs },
+    })
+
+    return error
+      ? { ok: false, message: error.message }
+      : { ok: true, message: data?.message ?? 'Automation runner kicked.', data }
+  } catch (error) {
+    return { ok: false, message: error.message }
+  }
+}
+
 export async function processNextAutomationJob({ preferEdgeFunction = true } = {}) {
   if (!isSupabaseConfigured) {
     throw new Error('Supabase is not configured.')
@@ -2470,9 +2486,12 @@ export async function submitApplicationToSupabase(application, uploadFiles = {})
   const writeError = results.find((result) => result.error)?.error
   if (writeError) throw writeError
 
+  const automationKickoff = await kickAutomationRunner('application-submitted-kickoff', 3)
+
   return {
     ok: true,
     applicantId,
+    automationKickoff,
     warning: failedUploadCount
       ? 'Application was saved and automation was queued, but one or more document uploads failed.'
       : null,
