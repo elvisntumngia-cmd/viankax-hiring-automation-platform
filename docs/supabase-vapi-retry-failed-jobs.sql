@@ -13,9 +13,10 @@ set
 where job_type = 'voice_interview_analysis'
   and job_status = 'failed'
   and (
-    last_error ilike '%serverUrl should not exist%'
-    or last_error ilike '%E.164%'
-    or last_error ilike '%valid phone number%'
-    or last_error ilike '%Invalid Key%'
-  );
-
+      last_error ilike '%serverUrl should not exist%'
+      or last_error ilike '%E.164%'
+      or last_error ilike '%valid phone number%'
+      or last_error ilike '%Invalid Key%'
+      or last_error ilike '%unique or exclusion constraint%'
+      or last_error ilike '%provider_call_id%'
+    );

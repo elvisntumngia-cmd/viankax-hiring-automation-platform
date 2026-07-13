@@ -570,7 +570,7 @@ async function applyPlaceholderJobEffects(supabase: ReturnType<typeof createClie
     effects.push(
       supabase
         .from('voice_interviews')
-        .upsert({
+        .insert({
           applicant_id: job.applicant_id,
           provider: voiceResult.provider,
           provider_call_id: voiceResult.providerCallId,
@@ -583,7 +583,7 @@ async function applyPlaceholderJobEffects(supabase: ReturnType<typeof createClie
           raw_provider_payload: voiceResult.rawProviderPayload ?? {},
           completed_at: voiceResult.status === 'completed' ? now : null,
           updated_at: now,
-        }, { onConflict: 'provider_call_id' }),
+        }),
     )
     if (voiceResult.status === 'completed' && Number.isFinite(voiceResult.score)) {
       effects.push(

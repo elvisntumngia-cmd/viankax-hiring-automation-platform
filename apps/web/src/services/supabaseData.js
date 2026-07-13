@@ -2072,7 +2072,7 @@ async function processNextAutomationJobLocally() {
 
 async function processNextAutomationJobWithEdgeFunction() {
   const { data, error } = await supabase.functions.invoke('process-automation-jobs', {
-    body: { mode: 'manual-debug-run', maxJobs: 10 },
+    body: { mode: 'manual-debug-run', maxJobs: 1 },
   })
 
   if (error) throw error
