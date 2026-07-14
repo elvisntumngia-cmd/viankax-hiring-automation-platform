@@ -58,12 +58,54 @@ const demoAutomationDelays = {
   deferredRetryMs: 15 * 1000,
 }
 
+const voiceCallWindow = {
+  timeZone: 'America/New_York',
+  startHour: 9,
+  endHour: 20,
+}
+
 function jsonResponse(body: Record<string, unknown>, status = 200) {
   return Response.json(body, { status, headers: corsHeaders })
 }
 
 function errorMessage(error: unknown) {
   return error instanceof Error ? error.message : String(error)
+}
+
+function easternTimeParts(date = new Date()) {
+  const parts = new Intl.DateTimeFormat('en-US', {
+    timeZone: voiceCallWindow.timeZone,
+    hour12: false,
+    hour: '2-digit',
+    minute: '2-digit',
+  }).formatToParts(date)
+
+  return {
+    hour: Number(parts.find((part) => part.type === 'hour')?.value ?? 0),
+    minute: Number(parts.find((part) => part.type === 'minute')?.value ?? 0),
+  }
+}
+
+function voiceCallWindowStatus(date = new Date()) {
+  const { hour, minute } = easternTimeParts(date)
+  const currentMinutes = hour * 60 + minute
+  const startMinutes = voiceCallWindow.startHour * 60
+  const endMinutes = voiceCallWindow.endHour * 60
+
+  if (currentMinutes >= startMinutes && currentMinutes < endMinutes) {
+    return { allowed: true, nextAt: date.toISOString(), message: 'Inside voice calling window.' }
+  }
+
+  const minutesUntilStart = currentMinutes < startMinutes
+    ? startMinutes - currentMinutes
+    : (24 * 60 - currentMinutes) + startMinutes
+  const nextAt = new Date(date.getTime() + minutesUntilStart * 60 * 1000)
+
+  return {
+    allowed: false,
+    nextAt: nextAt.toISOString(),
+    message: `Voice calls are limited to ${voiceCallWindow.startHour}:00-${voiceCallWindow.endHour}:00 ${voiceCallWindow.timeZone}.`,
+  }
 }
 
 function normalizedList(value: unknown) {
@@ -550,6 +592,40 @@ async function applyPlaceholderJobEffects(supabase: ReturnType<typeof createClie
   }
 
   if (job.job_type === 'voice_interview_analysis') {
+    const existingVapiCall = await fetchExistingVapiCall(supabase, job.applicant_id)
+    if (existingVapiCall) {
+      effects.push(
+        supabase
+          .from('applicants')
+          .update({
+            interview_status: existingVapiCall.status ?? 'Sent',
+            status: 'Qualified',
+            updated_at: now,
+          })
+          .eq('id', job.applicant_id),
+      )
+      effects.push(
+        supabase
+          .from('automation_events')
+          .insert({
+            applicant_id: job.applicant_id,
+            event_type: 'voice_interview_already_sent',
+            event_status: 'complete',
+            event_label: 'Voice Interview Already Sent',
+            metadata: {
+              automationJobId: job.id,
+              providerCallId: existingVapiCall.provider_call_id,
+              description: 'Skipped duplicate Vapi call because this applicant already has a Vapi call record.',
+            },
+          }),
+      )
+      effects.push(supabase.from('automation_events').insert(processedEventForJob(job, 'vapi')))
+      const results = await Promise.all(effects)
+      const effectError = results.find((result) => result.error)?.error
+      if (effectError) throw effectError
+      return
+    }
+
     const applicant = await buildVoiceInterviewContext(supabase, job.applicant_id)
     const voiceResult = await createVoiceInterview({
       provider: 'vapi',
@@ -795,6 +871,20 @@ async function hasCompletedVoiceInterview(supabase: ReturnType<typeof createClie
   return Boolean(data?.length)
 }
 
+async function fetchExistingVapiCall(supabase: ReturnType<typeof createClient>, applicantId: string) {
+  const { data, error } = await supabase
+    .from('voice_interviews')
+    .select('id, provider_call_id, status, created_at')
+    .eq('applicant_id', applicantId)
+    .eq('provider', 'vapi')
+    .not('provider_call_id', 'is', null)
+    .order('created_at', { ascending: false })
+    .limit(1)
+
+  if (error) throw error
+  return data?.[0] ?? null
+}
+
 async function deferAiAssessmentEvaluation(supabase: ReturnType<typeof createClient>, job: AutomationJob) {
   const nextCheckAt = new Date(Date.now() + demoAutomationDelays.deferredRetryMs).toISOString()
   const { error } = await supabase
@@ -824,8 +914,13 @@ async function deferAiAssessmentEvaluation(supabase: ReturnType<typeof createCli
   }
 }
 
-async function deferAutomationJob(supabase: ReturnType<typeof createClient>, job: AutomationJob, reason: string) {
-  const nextCheckAt = new Date(Date.now() + demoAutomationDelays.deferredRetryMs).toISOString()
+async function deferAutomationJob(
+  supabase: ReturnType<typeof createClient>,
+  job: AutomationJob,
+  reason: string,
+  scheduledFor?: string,
+) {
+  const nextCheckAt = scheduledFor ?? new Date(Date.now() + demoAutomationDelays.deferredRetryMs).toISOString()
   const { error } = await supabase
     .from('automation_jobs')
     .update({
@@ -1021,7 +1116,8 @@ async function recoverMissingVoiceInterviewJob(supabase: ReturnType<typeof creat
       current_stage,
       workflow_runs(id, run_status, created_at),
       automation_jobs(id, job_type, job_status, created_at),
-      voice_interviews(provider, provider_call_id, status)
+      voice_interviews(provider, provider_call_id, status),
+      ai_recommendations(recommendation)
     `)
     .in('current_stage', ['Assessment Completed', 'License Verified', 'Voice Interview Complete', 'Ready for Review'])
     .order('submitted_at', { ascending: false })
@@ -1034,14 +1130,16 @@ async function recoverMissingVoiceInterviewJob(supabase: ReturnType<typeof creat
     const voiceRows = applicant.voice_interviews ?? []
     const hasReadyVoiceJob = jobs.some((job: Record<string, any>) =>
       job.job_type === 'voice_interview_analysis' &&
-      ['queued', 'running'].includes(job.job_status),
+      ['blocked', 'queued', 'running', 'failed'].includes(job.job_status),
     )
     const hasVapiCall = voiceRows.some((voice: Record<string, any>) =>
       voice.provider === 'vapi' &&
       Boolean(voice.provider_call_id),
     )
+    const recommendation = applicant.ai_recommendations?.[0]?.recommendation
+    const isRecommended = ['Strong Candidate', 'Moderate Candidate'].includes(recommendation)
 
-    return !hasReadyVoiceJob && !hasVapiCall
+    return isRecommended && !hasReadyVoiceJob && !hasVapiCall
   })
 
   if (!candidate) return null
@@ -1238,7 +1336,39 @@ Deno.serve(async (request) => {
         continue
       }
 
-      const { error: runningError } = await supabase
+      if (job.job_type === 'voice_interview_analysis') {
+        const existingVapiCall = await fetchExistingVapiCall(supabase, job.applicant_id)
+        if (existingVapiCall) {
+          const { error: duplicateCompleteError } = await supabase
+            .from('automation_jobs')
+            .update({
+              job_status: 'completed',
+              last_error: `Skipped duplicate Vapi call. Existing provider call: ${existingVapiCall.provider_call_id}.`,
+              updated_at: now,
+            })
+            .eq('id', job.id)
+
+          if (duplicateCompleteError) throw duplicateCompleteError
+          await updateWorkflowAfterJob(supabase, job.workflow_run_id)
+          processedJobs.push({
+            id: job.id,
+            type: job.job_type,
+            label: job.job_label,
+            status: 'completed',
+            applicantName: job.applicants?.full_name ?? 'Unknown applicant',
+            skippedDuplicate: true,
+          })
+          continue
+        }
+
+        const windowStatus = voiceCallWindowStatus()
+        if (!windowStatus.allowed) {
+          deferredJobs.push(await deferAutomationJob(supabase, job, windowStatus.message, windowStatus.nextAt))
+          continue
+        }
+      }
+
+      const { data: claimedJob, error: runningError } = await supabase
         .from('automation_jobs')
         .update({
           job_status: 'running',
@@ -1246,8 +1376,12 @@ Deno.serve(async (request) => {
           updated_at: now,
         })
         .eq('id', job.id)
+        .eq('job_status', 'queued')
+        .select('id')
+        .maybeSingle()
 
       if (runningError) throw runningError
+      if (!claimedJob) continue
 
       try {
         await applyPlaceholderJobEffects(supabase, job)
