@@ -39,6 +39,13 @@ function toE164PhoneNumber(phone: string) {
   throw new Error(`Candidate phone number must be E.164 format for Vapi. Received "${phone}". For US numbers use +1 followed by 10 digits.`)
 }
 
+function vapiWebhookUrl(supabaseUrl?: string) {
+  const explicitUrl = Deno.env.get('VAPI_WEBHOOK_URL') ?? Deno.env.get('VAPI_SERVER_URL')
+  if (explicitUrl) return explicitUrl
+  if (supabaseUrl) return `${supabaseUrl.replace(/\/$/, '')}/functions/v1/vapi-voice-webhook`
+  return null
+}
+
 export async function createVoiceInterview(request: VoiceInterviewRequest): Promise<VoiceInterviewResult> {
   if (request.provider === 'vapi') {
     const apiKey = Deno.env.get('VAPI_API_KEY')
@@ -61,6 +68,25 @@ export async function createVoiceInterview(request: VoiceInterviewRequest): Prom
     }
 
     const customerNumber = toE164PhoneNumber(request.applicantPhone)
+    const webhookUrl = vapiWebhookUrl(request.supabaseUrl)
+    const webhookSecret = Deno.env.get('VAPI_WEBHOOK_SECRET')
+    const assistantOverrides: Record<string, unknown> = {
+      variableValues: {
+        applicantName: request.applicantName,
+        roleTitle: request.roleTitle,
+        screeningSummary: request.screeningSummary ?? 'Screening summary pending.',
+      },
+    }
+
+    if (webhookUrl) {
+      assistantOverrides.serverUrl = webhookUrl
+      assistantOverrides.serverMessages = ['end-of-call-report']
+    }
+
+    if (webhookSecret) {
+      assistantOverrides.serverUrlSecret = webhookSecret
+    }
+
     const response = await fetch('https://api.vapi.ai/call', {
       method: 'POST',
       headers: {
@@ -80,13 +106,7 @@ export async function createVoiceInterview(request: VoiceInterviewRequest): Prom
           roleTitle: request.roleTitle,
           source: 'viankax_hiring_automation',
         },
-        assistantOverrides: {
-          variableValues: {
-            applicantName: request.applicantName,
-            roleTitle: request.roleTitle,
-            screeningSummary: request.screeningSummary ?? 'Screening summary pending.',
-          },
-        },
+        assistantOverrides,
       }),
     })
 

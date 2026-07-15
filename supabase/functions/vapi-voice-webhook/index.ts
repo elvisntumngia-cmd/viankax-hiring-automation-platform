@@ -15,7 +15,7 @@ function errorMessage(error: unknown) {
 
 function clampScore(score: unknown) {
   const value = Number(score)
-  if (!Number.isFinite(value)) return 88
+  if (!Number.isFinite(value)) return null
   return Math.max(0, Math.min(100, Math.round(value)))
 }
 
@@ -40,6 +40,193 @@ function transcriptFromPayload(message: Record<string, any>, call: Record<string
   return 'Vapi voice interview completed. Transcript was not included in the webhook payload.'
 }
 
+function notesFromPayload(message: Record<string, any>, call: Record<string, any>) {
+  return message.analysis?.summary ??
+    call.analysis?.summary ??
+    message.summary ??
+    call.summary ??
+    message.structuredData?.summary ??
+    call.structuredData?.summary ??
+    null
+}
+
+function recommendationFromPayload(message: Record<string, any>, call: Record<string, any>, score: number) {
+  return message.analysis?.structuredData?.recommendation ??
+    message.structuredData?.recommendation ??
+    call.analysis?.structuredData?.recommendation ??
+    call.structuredData?.recommendation ??
+    (score >= 85 ? 'Proceed to final in-person interview' : score >= 70 ? 'Proceed with HR review' : 'Hold for HR review')
+}
+
+function wordCount(text: string) {
+  return text.trim().split(/\s+/).filter(Boolean).length
+}
+
+function heuristicVoiceEvaluation(transcript: string, providerScore: number | null, providerNotes: string | null) {
+  const normalized = transcript.toLowerCase()
+  const words = wordCount(transcript)
+  const concerns: string[] = []
+  let score = providerScore ?? 72
+
+  const nonsenseSignals = ['crab', 'blah', 'asdf', 'nothing to say', 'i do not know', "i don't know", 'no answer']
+  const nonsenseHits = nonsenseSignals.filter((signal) => normalized.includes(signal))
+  const positiveSignals = [
+    'security',
+    'guard',
+    'license',
+    'reliable',
+    'transportation',
+    'available',
+    'patrol',
+    'incident',
+    'report',
+    'customer',
+    'professional',
+    'communication',
+    'de-escalation',
+    'post orders',
+  ].filter((signal) => normalized.includes(signal))
+
+  if (words < 25) {
+    score = Math.min(score, 45)
+    concerns.push('Very limited voice interview response.')
+  }
+
+  if (nonsenseHits.length) {
+    score = Math.min(score, nonsenseHits.includes('crab') ? 28 : 42)
+    concerns.push(`Irrelevant or nonsensical response detected: ${nonsenseHits.join(', ')}.`)
+  }
+
+  if (positiveSignals.length < 3 && words < 90) {
+    score = Math.min(score, 58)
+    concerns.push('Candidate did not provide enough role-relevant evidence in the voice interview.')
+  }
+
+  if (!concerns.length && positiveSignals.length >= 5 && words >= 80) {
+    score = Math.max(score, 82)
+  }
+
+  const recommendation = score >= 85
+    ? 'Proceed to final in-person interview'
+    : score >= 70
+      ? 'Proceed with HR review'
+      : score >= 50
+        ? 'Hold for HR review'
+        : 'Not recommended after voice interview'
+
+  const summary = providerNotes ??
+    (concerns.length
+      ? `Voice interview needs HR review. ${concerns.join(' ')}`
+      : 'Voice interview responses were relevant enough for continued HR review.')
+
+  return {
+    provider: 'heuristic',
+    score,
+    recommendation,
+    summary,
+    concerns,
+    shouldSchedule: score >= 85,
+  }
+}
+
+async function evaluateVoiceInterview(transcript: string, providerScore: number | null, providerNotes: string | null) {
+  const apiKey = Deno.env.get('OPENAI_API_KEY')
+  const model = Deno.env.get('OPENAI_MODEL') ?? 'gpt-4.1-mini'
+  const fallback = heuristicVoiceEvaluation(transcript, providerScore, providerNotes)
+
+  if (!apiKey) return fallback
+
+  try {
+    const response = await fetch('https://api.openai.com/v1/responses', {
+      method: 'POST',
+      headers: {
+        Authorization: `Bearer ${apiKey}`,
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({
+        model,
+        input: [
+          {
+            role: 'system',
+            content: 'You evaluate a security officer voice interview. Penalize irrelevant, evasive, joking, or nonsensical answers heavily. A candidate should only proceed to final interview if the transcript shows clear role fit, professionalism, communication, availability, and reliability. Return only JSON.',
+          },
+          {
+            role: 'user',
+            content: JSON.stringify({
+              transcript,
+              providerScore,
+              providerNotes,
+            }),
+          },
+        ],
+        text: {
+          format: {
+            type: 'json_schema',
+            name: 'viankax_voice_interview_evaluation',
+            strict: true,
+            schema: {
+              type: 'object',
+              additionalProperties: false,
+              properties: {
+                score: { type: 'integer', minimum: 0, maximum: 100 },
+                recommendation: {
+                  type: 'string',
+                  enum: [
+                    'Proceed to final in-person interview',
+                    'Proceed with HR review',
+                    'Hold for HR review',
+                    'Not recommended after voice interview',
+                  ],
+                },
+                summary: { type: 'string' },
+                concerns: { type: 'array', items: { type: 'string' } },
+                shouldSchedule: { type: 'boolean' },
+              },
+              required: ['score', 'recommendation', 'summary', 'concerns', 'shouldSchedule'],
+            },
+          },
+        },
+      }),
+    })
+
+    const result = await response.json()
+    if (!response.ok) throw new Error(result?.error?.message ?? 'OpenAI voice evaluation failed.')
+
+    const outputText = typeof result.output_text === 'string'
+      ? result.output_text
+      : result.output?.flatMap((item: Record<string, any>) => item.content ?? [])
+        .find((content: Record<string, any>) => typeof content.text === 'string')?.text
+    const evaluation = JSON.parse(outputText)
+    const score = Number(evaluation.score)
+
+    return {
+      provider: 'openai',
+      score: Number.isFinite(score) ? Math.max(0, Math.min(100, Math.round(score))) : fallback.score,
+      recommendation: evaluation.recommendation ?? fallback.recommendation,
+      summary: evaluation.summary ?? fallback.summary,
+      concerns: Array.isArray(evaluation.concerns) ? evaluation.concerns : fallback.concerns,
+      shouldSchedule: Boolean(evaluation.shouldSchedule) && Number(score) >= 85,
+    }
+  } catch (error) {
+    return {
+      ...fallback,
+      summary: `${fallback.summary} OpenAI voice evaluation fallback used: ${errorMessage(error)}.`,
+    }
+  }
+}
+
+function combinedTranscript(notes: string | null, transcript: string) {
+  if (!notes) return transcript
+
+  return [
+    'AI voice interview notes:',
+    notes,
+    '',
+    'Transcript:',
+    transcript,
+  ].join('\n')
+}
+
 function scoreFromPayload(message: Record<string, any>, call: Record<string, any>) {
   return clampScore(
     message.analysis?.successEvaluation ??
@@ -58,6 +245,83 @@ function recordingFromPayload(message: Record<string, any>, call: Record<string,
     null
 }
 
+async function findVoiceInterview(
+  supabase: ReturnType<typeof createClient>,
+  callId: string | null,
+  applicantId: string | null,
+) {
+  const query = supabase
+    .from('voice_interviews')
+    .select('id, applicant_id, provider_call_id, status')
+    .limit(1)
+
+  const { data, error } = callId
+    ? await query.eq('provider_call_id', callId)
+    : await query.eq('applicant_id', applicantId)
+
+  if (error) throw error
+  return data?.[0] ?? null
+}
+
+async function wakeSchedulingJob(supabase: ReturnType<typeof createClient>, applicantId: string, now: string) {
+  const { data: existingJob, error: existingJobError } = await supabase
+    .from('automation_jobs')
+    .select('id, workflow_run_id, job_status')
+    .eq('applicant_id', applicantId)
+    .eq('job_type', 'send_scheduling_link')
+    .order('created_at', { ascending: false })
+    .limit(1)
+    .maybeSingle()
+
+  if (existingJobError) throw existingJobError
+
+  if (existingJob) {
+    const { error } = await supabase
+      .from('automation_jobs')
+      .update({
+        job_status: existingJob.job_status === 'completed' ? 'completed' : 'queued',
+        scheduled_for: now,
+        last_error: existingJob.job_status === 'completed' ? 'Scheduling already completed.' : null,
+        updated_at: now,
+      })
+      .eq('id', existingJob.id)
+
+    if (error) throw error
+    return existingJob.id
+  }
+
+  const { data: workflowRun, error: workflowRunError } = await supabase
+    .from('workflow_runs')
+    .select('id')
+    .eq('applicant_id', applicantId)
+    .order('created_at', { ascending: false })
+    .limit(1)
+    .maybeSingle()
+
+  if (workflowRunError) throw workflowRunError
+
+  const { data: insertedJob, error: insertError } = await supabase
+    .from('automation_jobs')
+    .insert({
+      applicant_id: applicantId,
+      workflow_run_id: workflowRun?.id ?? null,
+      job_type: 'send_scheduling_link',
+      job_label: 'Schedule final in-person interview',
+      job_status: 'queued',
+      priority: 7,
+      scheduled_for: now,
+      payload: {
+        provider: 'calendar',
+        mode: 'created_from_vapi_webhook',
+      },
+    })
+    .select('id')
+    .single()
+
+  if (insertError) throw insertError
+  return insertedJob.id
+}
+
 Deno.serve(async (request) => {
   if (request.method === 'OPTIONS') {
     return new Response('ok', { headers: corsHeaders })
@@ -68,7 +332,12 @@ Deno.serve(async (request) => {
     if (webhookSecret) {
       const authHeader = request.headers.get('authorization') ?? ''
       const secretHeader = request.headers.get('x-vapi-secret') ?? ''
-      const authorized = authHeader === `Bearer ${webhookSecret}` || secretHeader === webhookSecret
+      const serverSecretHeader = request.headers.get('x-vapi-server-secret') ?? ''
+      const serverUrlSecretHeader = request.headers.get('x-server-url-secret') ?? ''
+      const authorized = authHeader === `Bearer ${webhookSecret}` ||
+        secretHeader === webhookSecret ||
+        serverSecretHeader === webhookSecret ||
+        serverUrlSecretHeader === webhookSecret
       if (!authorized) return jsonResponse({ ok: false, error: 'Unauthorized webhook request.' }, 401)
     }
 
@@ -80,18 +349,30 @@ Deno.serve(async (request) => {
     const message = extractMessage(body)
     const call = extractCall(message)
     const callId = call.id ?? message.callId ?? message.call?.id
-    const applicantId = call.metadata?.applicantId ?? message.metadata?.applicantId
+    const payloadApplicantId = call.metadata?.applicantId ?? message.metadata?.applicantId
     const eventType = message.type ?? body.type ?? 'vapi_event'
     const isCompletionEvent = ['end-of-call-report', 'call-ended', 'call.completed', 'call.ended'].includes(eventType) ||
       Boolean(message.endedReason || call.endedReason || message.endedAt || call.endedAt)
 
-    if (!callId && !applicantId) {
+    if (!callId && !payloadApplicantId) {
       throw new Error('Vapi webhook did not include a call id or applicant id.')
     }
 
     const supabase = createClient(supabaseUrl, serviceRoleKey)
-    const score = scoreFromPayload(message, call)
+    const existingVoiceInterview = await findVoiceInterview(supabase, callId ?? null, payloadApplicantId ?? null)
+    const applicantId = payloadApplicantId ?? existingVoiceInterview?.applicant_id ?? null
+
+    if (!applicantId) {
+      throw new Error('Vapi webhook could not be matched to an applicant.')
+    }
+
+    const providerScore = scoreFromPayload(message, call)
     const transcript = transcriptFromPayload(message, call)
+    const notes = notesFromPayload(message, call)
+    const voiceEvaluation = await evaluateVoiceInterview(transcript, providerScore, notes)
+    const score = voiceEvaluation.score
+    const recommendation = recommendationFromPayload(message, call, score)
+    const finalRecommendation = voiceEvaluation.recommendation ?? recommendation
     const recordingUrl = recordingFromPayload(message, call)
     const now = new Date().toISOString()
 
@@ -100,23 +381,33 @@ Deno.serve(async (request) => {
       .update({
         provider: 'vapi',
         recording_url: recordingUrl,
-        transcript,
+        transcript: combinedTranscript(voiceEvaluation.summary, transcript),
         score,
-        recommendation: score >= 85 ? 'Proceed to final in-person interview' : score >= 70 ? 'Proceed with HR review' : 'Hold for HR review',
+        recommendation: finalRecommendation,
         status: isCompletionEvent ? 'Complete' : 'In Progress',
-        raw_provider_payload: body,
+        raw_provider_payload: {
+          ...body,
+          viankax_voice_evaluation: voiceEvaluation,
+          provider_score: providerScore,
+        },
         completed_at: isCompletionEvent ? now : null,
         updated_at: now,
       })
 
-    const { error: voiceError } = callId
-      ? await updateQuery.eq('provider_call_id', callId)
-      : await updateQuery.eq('applicant_id', applicantId)
+    const { data: updatedVoiceRows, error: voiceError } = callId
+      ? await updateQuery.eq('provider_call_id', callId).select('id, applicant_id')
+      : await updateQuery.eq('applicant_id', applicantId).select('id, applicant_id')
 
     if (voiceError) throw voiceError
+    if (!updatedVoiceRows?.length) {
+      throw new Error('No matching voice interview row was found for this Vapi webhook.')
+    }
 
-    if (isCompletionEvent && applicantId) {
-      const [{ error: scoreError }, { error: applicantError }, { error: historyError }, { error: eventError }, { error: scheduleJobError }] = await Promise.all([
+    if (isCompletionEvent) {
+      const schedulingJobId = voiceEvaluation.shouldSchedule
+        ? await wakeSchedulingJob(supabase, applicantId, now)
+        : null
+      const [{ error: scoreError }, { error: applicantError }, { error: historyError }, { error: eventError }, { error: scheduleBlockError }] = await Promise.all([
         supabase
           .from('candidate_scores')
           .update({
@@ -130,7 +421,7 @@ Deno.serve(async (request) => {
           .update({
             current_stage: 'Voice Interview Complete',
             interview_status: 'Complete',
-            status: 'Qualified',
+            status: voiceEvaluation.shouldSchedule ? 'Qualified' : 'Needs Review',
             updated_at: now,
           })
           .eq('id', applicantId),
@@ -153,27 +444,39 @@ Deno.serve(async (request) => {
             metadata: {
               callId,
               score,
+              providerScore,
               eventType,
-              description: 'Vapi returned voice interview transcript and score.',
+              schedulingJobId,
+              notes: voiceEvaluation.summary,
+              concerns: voiceEvaluation.concerns,
+              recommendation: finalRecommendation,
+              evaluationProvider: voiceEvaluation.provider,
+              shouldSchedule: voiceEvaluation.shouldSchedule,
+              description: voiceEvaluation.shouldSchedule
+                ? 'Vapi returned voice interview transcript and ViankaX evaluation recommended final scheduling.'
+                : 'Vapi returned voice interview transcript and ViankaX evaluation routed the candidate to HR review.',
             },
           }),
         supabase
           .from('automation_jobs')
           .update({
+            job_status: voiceEvaluation.shouldSchedule ? 'queued' : 'blocked',
             scheduled_for: now,
-            last_error: null,
+            last_error: voiceEvaluation.shouldSchedule
+              ? null
+              : `Voice interview recommended HR review: ${voiceEvaluation.recommendation}.`,
             updated_at: now,
           })
           .eq('applicant_id', applicantId)
           .eq('job_type', 'send_scheduling_link')
-          .eq('job_status', 'queued'),
+          .in('job_status', ['blocked', 'queued', 'failed', 'running']),
       ])
 
       if (scoreError) throw scoreError
       if (applicantError) throw applicantError
       if (historyError) throw historyError
       if (eventError) throw eventError
-      if (scheduleJobError) throw scheduleJobError
+      if (scheduleBlockError) throw scheduleBlockError
     }
 
     return jsonResponse({ ok: true, callId, applicantId, eventType, completed: isCompletionEvent })
@@ -181,4 +484,3 @@ Deno.serve(async (request) => {
     return jsonResponse({ ok: false, error: errorMessage(error) }, 500)
   }
 })
-

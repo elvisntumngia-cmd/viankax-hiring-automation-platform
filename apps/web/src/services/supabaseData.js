@@ -1203,7 +1203,8 @@ export async function submitAiScreeningAssessment(applicantId, answers, applican
 
   const now = new Date().toISOString()
   const scores = scoreAssessmentAnswers(answers, applicant)
-  const shouldStartVoiceInterview = scores.suggestedNextStep === 'Proceed to voice interview'
+  const shouldStartVoiceInterview = ['Strong Candidate', 'Moderate Candidate'].includes(scores.recommendation) &&
+    !['Hold for HR review', 'Reject'].includes(scores.suggestedNextStep)
   const answerRows = Object.entries(answers).map(([question, answer]) => ({
     applicant_id: applicantId,
     question: aiScreeningAnswerLabels[question] ?? question,

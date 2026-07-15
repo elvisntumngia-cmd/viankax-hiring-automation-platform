@@ -42,6 +42,66 @@ function DetailRow({ label, value }) {
   )
 }
 
+function formatDetailDate(dateValue) {
+  if (!dateValue) return 'Not scheduled'
+
+  return new Intl.DateTimeFormat('en-US', {
+    month: 'long',
+    day: 'numeric',
+    year: 'numeric',
+    hour: 'numeric',
+    minute: '2-digit',
+  }).format(new Date(dateValue))
+}
+
+function getAutomationJob(applicant, jobType) {
+  return [...(applicant.automationJobs ?? [])]
+    .filter((job) => job.type === jobType)
+    .sort((first, second) => new Date(second.updatedAt ?? second.createdAt ?? 0) - new Date(first.updatedAt ?? first.createdAt ?? 0))[0]
+}
+
+function getVoiceAutomationSummary(applicant) {
+  const voiceJob = getAutomationJob(applicant, 'voice_interview_analysis')
+  const schedulingJob = getAutomationJob(applicant, 'send_scheduling_link')
+  const callCreated = Boolean(applicant.voiceInterview?.providerCallId)
+  const callComplete = applicant.voiceInterview?.status === 'Complete'
+
+  if (callComplete) {
+    return {
+      label: 'Voice interview complete',
+      detail: schedulingJob?.status === 'completed'
+        ? 'Final interview scheduling has already been processed.'
+        : 'Scheduling has been released and is waiting for the automation runner.',
+    }
+  }
+
+  if (callCreated) {
+    return {
+      label: 'Vapi call created',
+      detail: 'The system is waiting for Vapi to return the completed call report webhook.',
+    }
+  }
+
+  if (voiceJob?.lastError) {
+    return {
+      label: voiceJob.status === 'queued' ? 'Waiting to call' : 'Voice automation paused',
+      detail: voiceJob.lastError,
+    }
+  }
+
+  if (voiceJob?.status === 'queued') {
+    return {
+      label: 'Ready for Vapi call',
+      detail: `Next attempt is scheduled for ${formatDetailDate(voiceJob.scheduledFor)}.`,
+    }
+  }
+
+  return {
+    label: 'Not ready yet',
+    detail: 'Voice interview starts automatically after the applicant completes AI screening and meets the recommendation threshold.',
+  }
+}
+
 const documentRows = [
   ['Resume', 'resume', 'resume'],
   ['License / guard card', 'license', 'license'],
@@ -227,6 +287,7 @@ function ApplicantDetailPage() {
   const canUpdateDecision = isSupabaseRecord(applicant)
   const placementRecommendation = applicant.placementRecommendation ?? getPlacementRecommendation(applicant)
   const groupedScreeningAnswers = groupScreeningAnswers(applicant.screeningAnswers)
+  const voiceAutomationSummary = getVoiceAutomationSummary(applicant)
 
   return (
     <section>
@@ -426,6 +487,10 @@ function ApplicantDetailPage() {
         </InfoCard>
 
         <InfoCard title="Voice interview">
+          <div className="mb-4 rounded-md border border-blue-400/20 bg-blue-500/10 p-3">
+            <p className="font-semibold text-blue-200">{voiceAutomationSummary.label}</p>
+            <p className="mt-1 text-zinc-300">{voiceAutomationSummary.detail}</p>
+          </div>
           <DetailRow
             label="Score"
             value={applicant.voiceInterview.score ?? 'Not available'}
@@ -454,7 +519,7 @@ function ApplicantDetailPage() {
 
         <InfoCard title="Final in-person interview">
           <DetailRow label="Status" value={applicant.finalInterview?.status ?? 'Not Scheduled'} />
-          <DetailRow label="Date/time" value={applicant.interviewTime} />
+          <DetailRow label="Date/time" value={applicant.interviewTime ?? formatDetailDate(applicant.finalInterview?.scheduledFor)} />
           <DetailRow label="Provider" value={applicant.finalInterview?.provider ?? 'Calendar placeholder'} />
           <DetailRow label="Interviewer" value={applicant.finalInterview?.interviewerEmail ?? 'Not assigned'} />
           <DetailRow

@@ -7,6 +7,7 @@ import {
   ListChecks,
   LayoutDashboard,
   MapPinned,
+  Settings,
   UsersRound,
 } from 'lucide-react'
 import ProtectedRoute from './components/ProtectedRoute'
@@ -19,6 +20,7 @@ import ApplicationStatusPage from './pages/ApplicationStatusPage'
 import DashboardJobsPage from './pages/DashboardJobsPage'
 import DashboardCalendarPage from './pages/DashboardCalendarPage'
 import DashboardPage from './pages/DashboardPage'
+import DashboardSettingsPage from './pages/DashboardSettingsPage'
 import HomePage from './pages/HomePage'
 import JobDetailsPage from './pages/JobDetailsPage'
 import JobsPage from './pages/JobsPage'
@@ -35,6 +37,7 @@ const navigationLinks = [
   { label: 'Jobs', to: '/dashboard/jobs', icon: ListChecks },
   { label: 'Sites', to: '/dashboard/sites', icon: MapPinned },
   { label: 'Open Shifts', to: '/dashboard/shifts', icon: CalendarClock },
+  { label: 'Settings', to: '/dashboard/settings', icon: Settings },
 ]
 
 function AppShell({ children }) {
@@ -157,6 +160,7 @@ function App() {
         <Route path="/dashboard/calendar" element={<ProtectedRoute><DashboardCalendarPage /></ProtectedRoute>} />
         <Route path="/dashboard/sites" element={<ProtectedRoute><SitesPage /></ProtectedRoute>} />
         <Route path="/dashboard/shifts" element={<ProtectedRoute><OpenShiftsPage /></ProtectedRoute>} />
+        <Route path="/dashboard/settings" element={<ProtectedRoute><DashboardSettingsPage /></ProtectedRoute>} />
         <Route path="*" element={<Navigate to="/jobs" replace />} />
       </Routes>
     </AppShell>

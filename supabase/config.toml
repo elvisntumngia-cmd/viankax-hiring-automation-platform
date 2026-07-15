@@ -1,0 +1,5 @@
+[functions.vapi-voice-webhook]
+verify_jwt = false
+
+[functions.calendar-oauth-callback]
+verify_jwt = false

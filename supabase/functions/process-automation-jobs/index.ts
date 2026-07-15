@@ -58,12 +58,6 @@ const demoAutomationDelays = {
   deferredRetryMs: 15 * 1000,
 }
 
-const voiceCallWindow = {
-  timeZone: 'America/New_York',
-  startHour: 9,
-  endHour: 20,
-}
-
 function jsonResponse(body: Record<string, unknown>, status = 200) {
   return Response.json(body, { status, headers: corsHeaders })
 }
@@ -72,40 +66,8 @@ function errorMessage(error: unknown) {
   return error instanceof Error ? error.message : String(error)
 }
 
-function easternTimeParts(date = new Date()) {
-  const parts = new Intl.DateTimeFormat('en-US', {
-    timeZone: voiceCallWindow.timeZone,
-    hour12: false,
-    hour: '2-digit',
-    minute: '2-digit',
-  }).formatToParts(date)
-
-  return {
-    hour: Number(parts.find((part) => part.type === 'hour')?.value ?? 0),
-    minute: Number(parts.find((part) => part.type === 'minute')?.value ?? 0),
-  }
-}
-
 function voiceCallWindowStatus(date = new Date()) {
-  const { hour, minute } = easternTimeParts(date)
-  const currentMinutes = hour * 60 + minute
-  const startMinutes = voiceCallWindow.startHour * 60
-  const endMinutes = voiceCallWindow.endHour * 60
-
-  if (currentMinutes >= startMinutes && currentMinutes < endMinutes) {
-    return { allowed: true, nextAt: date.toISOString(), message: 'Inside voice calling window.' }
-  }
-
-  const minutesUntilStart = currentMinutes < startMinutes
-    ? startMinutes - currentMinutes
-    : (24 * 60 - currentMinutes) + startMinutes
-  const nextAt = new Date(date.getTime() + minutesUntilStart * 60 * 1000)
-
-  return {
-    allowed: false,
-    nextAt: nextAt.toISOString(),
-    message: `Voice calls are limited to ${voiceCallWindow.startHour}:00-${voiceCallWindow.endHour}:00 ${voiceCallWindow.timeZone}.`,
-  }
+  return { allowed: true, nextAt: date.toISOString(), message: 'Voice calling window disabled. Calls may run immediately.' }
 }
 
 function normalizedList(value: unknown) {
@@ -476,7 +438,8 @@ async function applyPlaceholderJobEffects(supabase: ReturnType<typeof createClie
     const nextStage = evaluation.suggestedNextStep === 'Reject'
       ? 'Ready for Review'
       : 'Assessment Completed'
-    const shouldStartVoiceInterview = evaluation.suggestedNextStep === 'Proceed to voice interview'
+    const shouldStartVoiceInterview = ['Strong Candidate', 'Moderate Candidate'].includes(evaluation.screeningRecommendation) &&
+      !['Hold for HR review', 'Reject'].includes(evaluation.suggestedNextStep)
 
     effects.push(
       supabase
