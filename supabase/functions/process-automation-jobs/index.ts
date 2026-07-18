@@ -38,6 +38,14 @@ type NotificationRow = {
   }
 }
 
+const candidateEmailJobTypes = [
+  'send_confirmation_email',
+  'send_ai_assessment',
+  'send_screening_complete_email',
+  'send_final_candidate_email',
+  'send_candidate_followup_email',
+]
+
 type CalendarSettings = {
   provider: string
   interviewerEmail: string
@@ -169,12 +177,15 @@ async function insertInterviewSchedule(supabase: ReturnType<typeof createClient>
 function processedEventForJob(job: AutomationJob, provider = 'placeholder') {
   const eventMap: Record<string, [string, string, string]> = {
     send_confirmation_sms: ['confirmation_sms_sent', 'Confirmation SMS Sent', 'Placeholder SMS confirmation was marked as sent.'],
-    send_confirmation_email: ['confirmation_email_sent', 'Confirmation Email Sent', 'Placeholder email confirmation was marked as sent.'],
+    send_confirmation_email: ['application_screening_email_sent', 'Application & Screening Email Sent', 'Candidate received application confirmation and screening invitation.'],
     parse_resume: ['resume_screened', 'Resume Screened', 'Placeholder resume parsing completed and candidate moved forward.'],
-    send_ai_assessment: ['ai_assessment_sent', 'AI Assessment Sent', 'Placeholder AI screening assessment invite was queued for the candidate.'],
+    send_ai_assessment: ['ai_assessment_sent', 'AI Assessment Sent', 'AI screening assessment invite job completed.'],
+    send_screening_complete_email: ['screening_complete_email_sent', 'Screening Complete Email Sent', 'Candidate received the voice interview trigger link.'],
     evaluate_ai_assessment: ['ai_screening_evaluated', 'AI Screening Evaluated', 'AI screening evaluation generated structured candidate scores.'],
     verify_license: ['license_verification_completed', 'License Verification Completed', 'Placeholder license verification completed.'],
     send_scheduling_link: ['scheduling_link_sent', 'Scheduling Link Sent', 'Placeholder scheduling link was marked as sent.'],
+    send_final_candidate_email: ['final_candidate_email_sent', 'Final Candidate Email Sent', 'Candidate received final interview or follow-up instructions.'],
+    send_candidate_followup_email: ['candidate_followup_email_sent', 'Candidate Follow-up Email Sent', 'Candidate received post-voice follow-up instructions.'],
     voice_interview_analysis: ['voice_interview_analyzed', 'Voice Interview Analyzed', 'Placeholder voice interview analysis completed.'],
   }
   const [type, label, description] = eventMap[job.job_type] ?? [
@@ -202,8 +213,22 @@ function emailHtml(notification: NotificationRow) {
   const assessmentUrl = typeof notification.metadata?.assessmentUrl === 'string'
     ? notification.metadata.assessmentUrl
     : ''
-  const actionButton = assessmentUrl
-    ? `<a href="${assessmentUrl}" style="display:inline-block;background:#0084ff;color:#ffffff;text-decoration:none;font-weight:700;border-radius:8px;padding:12px 18px;margin:4px 0 18px;">Complete screening assessment</a>`
+  const voiceUrl = typeof notification.metadata?.voiceUrl === 'string'
+    ? notification.metadata.voiceUrl
+    : ''
+  const schedulingUrl = typeof notification.metadata?.schedulingUrl === 'string'
+    ? notification.metadata.schedulingUrl
+    : ''
+  const actionUrl = assessmentUrl || voiceUrl || schedulingUrl
+  const actionLabel = assessmentUrl
+    ? 'Complete screening assessment'
+    : voiceUrl
+      ? 'Trigger voice interview'
+      : schedulingUrl
+        ? 'View final interview details'
+        : ''
+  const actionButton = actionUrl
+    ? `<a href="${actionUrl}" style="display:inline-block;background:#0084ff;color:#ffffff;text-decoration:none;font-weight:700;border-radius:8px;padding:12px 18px;margin:4px 0 18px;">${actionLabel}</a>`
     : ''
 
   return `
@@ -272,6 +297,117 @@ async function sendResendEmail(notification: NotificationRow) {
     provider: 'resend',
     note: 'Email sent with Resend.',
   }
+}
+
+function appBaseUrl() {
+  return (Deno.env.get('APP_BASE_URL') ?? Deno.env.get('PUBLIC_APP_URL') ?? 'http://localhost:5173').replace(/\/$/, '')
+}
+
+async function queueCandidateEmail(
+  supabase: ReturnType<typeof createClient>,
+  applicantId: string,
+  jobType: string,
+  subject: string,
+  message: string,
+  metadata: Record<string, unknown> = {},
+) {
+  const { data: applicant, error: applicantError } = await supabase
+    .from('applicants')
+    .select('email, full_name')
+    .eq('id', applicantId)
+    .single()
+
+  if (applicantError) throw applicantError
+  if (!applicant?.email) return null
+
+  const { data: automationJob, error: jobError } = await supabase
+    .from('automation_jobs')
+    .select('id, workflow_run_id')
+    .eq('applicant_id', applicantId)
+    .eq('job_type', jobType)
+    .order('created_at', { ascending: false })
+    .limit(1)
+    .maybeSingle()
+
+  if (jobError) throw jobError
+
+  let automationJobId = automationJob?.id ?? null
+  if (!automationJobId) {
+    const { data: workflowRun } = await supabase
+      .from('workflow_runs')
+      .select('id')
+      .eq('applicant_id', applicantId)
+      .order('created_at', { ascending: false })
+      .limit(1)
+      .maybeSingle()
+
+    const { data: insertedJob, error: insertJobError } = await supabase
+      .from('automation_jobs')
+      .insert({
+        applicant_id: applicantId,
+        workflow_run_id: workflowRun?.id ?? null,
+        job_type: jobType,
+        job_label: jobType === 'send_screening_complete_email'
+          ? 'Send screening complete email'
+          : 'Send candidate follow-up email',
+        job_status: 'queued',
+        priority: jobType === 'send_screening_complete_email' ? 6 : 9,
+        scheduled_for: new Date().toISOString(),
+        payload: {
+          channel: 'email',
+          template: metadata.template ?? jobType,
+        },
+      })
+      .select('id')
+      .single()
+
+    if (insertJobError) throw insertJobError
+    automationJobId = insertedJob.id
+  } else {
+    const { error: wakeJobError } = await supabase
+      .from('automation_jobs')
+      .update({
+        job_status: 'queued',
+        scheduled_for: new Date().toISOString(),
+        last_error: null,
+        updated_at: new Date().toISOString(),
+      })
+      .eq('id', automationJobId)
+      .in('job_status', ['blocked', 'queued', 'failed', 'running'])
+
+    if (wakeJobError) throw wakeJobError
+  }
+
+  const { data: existingNotification, error: existingNotificationError } = await supabase
+    .from('notification_queue')
+    .select('id')
+    .eq('applicant_id', applicantId)
+    .eq('channel', 'email')
+    .contains('metadata', { template: String(metadata.template ?? jobType) })
+    .limit(1)
+    .maybeSingle()
+
+  if (existingNotificationError) throw existingNotificationError
+  if (existingNotification) return existingNotification.id
+
+  const { data: insertedNotification, error: notificationError } = await supabase
+    .from('notification_queue')
+    .insert({
+      applicant_id: applicantId,
+      automation_job_id: automationJobId,
+      channel: 'email',
+      recipient: applicant.email,
+      subject,
+      message,
+      notification_status: 'queued',
+      scheduled_for: new Date().toISOString(),
+      metadata,
+    })
+    .select('id')
+    .single()
+
+  if (notificationError) throw notificationError
+  return insertedNotification.id
 }
 
 async function buildAiScreeningContext(supabase: ReturnType<typeof createClient>, applicantId: string) {
@@ -369,13 +505,14 @@ async function applyPlaceholderJobEffects(supabase: ReturnType<typeof createClie
     )
   }
 
-  if (job.job_type === 'send_confirmation_email' || job.job_type === 'send_ai_assessment') {
+  if (candidateEmailJobTypes.includes(job.job_type)) {
     const { data: notifications, error: notificationError } = await supabase
       .from('notification_queue')
       .select('id, recipient, subject, message, metadata')
       .eq('applicant_id', job.applicant_id)
       .eq('channel', 'email')
       .eq('notification_status', 'queued')
+      .eq('automation_job_id', job.id)
       .limit(1)
 
     if (notificationError) throw notificationError
@@ -440,6 +577,7 @@ async function applyPlaceholderJobEffects(supabase: ReturnType<typeof createClie
       : 'Assessment Completed'
     const shouldStartVoiceInterview = ['Strong Candidate', 'Moderate Candidate'].includes(evaluation.screeningRecommendation) &&
       !['Hold for HR review', 'Reject'].includes(evaluation.suggestedNextStep)
+    const voiceUrl = `${appBaseUrl()}/voice/${job.applicant_id}`
 
     effects.push(
       supabase
@@ -516,16 +654,34 @@ async function applyPlaceholderJobEffects(supabase: ReturnType<typeof createClie
       supabase
         .from('automation_jobs')
         .update({
-          job_status: shouldStartVoiceInterview ? 'queued' : 'blocked',
+          job_status: 'blocked',
           scheduled_for: now,
           last_error: shouldStartVoiceInterview
-            ? null
+            ? 'Waiting for candidate to trigger voice interview from email link.'
             : `AI screening recommended: ${evaluation.suggestedNextStep}.`,
           updated_at: now,
         })
         .eq('applicant_id', job.applicant_id)
         .eq('job_type', 'voice_interview_analysis')
         .in('job_status', ['blocked', 'queued', 'running', 'failed']),
+    )
+    effects.push(
+      queueCandidateEmail(
+        supabase,
+        job.applicant_id,
+        'send_screening_complete_email',
+        'Your ViankaX screening is complete',
+        shouldStartVoiceInterview
+          ? `Your AI screening is complete. Please trigger your voice interview when you are ready: ${voiceUrl}`
+          : 'Your AI screening is complete. Our hiring team will review your application and follow up with next steps.',
+        {
+          template: 'screening_complete_voice_trigger',
+          voiceUrl: shouldStartVoiceInterview ? voiceUrl : null,
+          screeningScore: evaluation.overallScreeningScore,
+          recommendation: evaluation.screeningRecommendation,
+          suggestedNextStep: evaluation.suggestedNextStep,
+        },
+      ),
     )
   }
 
@@ -707,6 +863,21 @@ async function applyPlaceholderJobEffects(supabase: ReturnType<typeof createClie
     if (placementMatches.length) {
       effects.push(supabase.from('placement_matches').insert(placementMatches))
     }
+    effects.push(
+      queueCandidateEmail(
+        supabase,
+        job.applicant_id,
+        'send_final_candidate_email',
+        'Your final interview has been scheduled',
+        `Thank you for completing the ViankaX hiring automation steps. Your final in-person interview has been scheduled for ${new Date(scheduledFor).toLocaleString('en-US')}. Please bring your ID, license or guard card if applicable, and any requested documents. Scheduling details: https://cal.com/viankax/final-interview-placeholder`,
+        {
+          template: 'final_interview_scheduled',
+          schedulingUrl: 'https://cal.com/viankax/final-interview-placeholder',
+          scheduledFor,
+          provider: calendarProvider,
+        },
+      ),
+    )
   }
 
   effects.push(supabase.from('automation_events').insert(processedEventForJob(job, provider)))
@@ -1000,7 +1171,8 @@ async function recoverMissingAiAssessmentInvite(supabase: ReturnType<typeof crea
     const answers = applicant.screening_answers ?? []
     const hasAiInvite = notifications.some((notification: Record<string, any>) =>
       notification.subject === 'Complete your ViankaX screening assessment' ||
-      notification.metadata?.template === 'ai_assessment_invite',
+      notification.metadata?.template === 'ai_assessment_invite' ||
+      notification.metadata?.template === 'application_confirmation_with_screening',
     )
     const hasAiAnswers = answers.some((answer: Record<string, any>) => answer.category === 'ai_assessment')
 
@@ -1013,10 +1185,10 @@ async function recoverMissingAiAssessmentInvite(supabase: ReturnType<typeof crea
     id: crypto.randomUUID(),
     applicant_id: candidate.id,
     recipient: candidate.email,
-    subject: 'Complete your ViankaX screening assessment',
-    message: `Please complete your AI screening assessment so the hiring team can continue reviewing your application: ${appBaseUrl}/screening/${candidate.id}`,
+    subject: 'Your application was received - complete your screening',
+    message: `Your application has been received. Please complete your AI screening assessment so the hiring team can continue reviewing your application: ${appBaseUrl}/screening/${candidate.id}`,
     metadata: {
-      template: 'ai_assessment_invite',
+      template: 'application_confirmation_with_screening',
       assessmentUrl: `${appBaseUrl}/screening/${candidate.id}`,
       recovered: true,
     },
@@ -1041,7 +1213,7 @@ async function recoverMissingAiAssessmentInvite(supabase: ReturnType<typeof crea
       metadata: {
         ...notification.metadata,
         provider: emailResult.provider,
-        note: `${emailResult.note} Recovered missing AI screening invite.`,
+        note: `${emailResult.note} Recovered missing application confirmation and AI screening invite.`,
       },
     })
 

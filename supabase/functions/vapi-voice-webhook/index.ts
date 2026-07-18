@@ -322,6 +322,114 @@ async function wakeSchedulingJob(supabase: ReturnType<typeof createClient>, appl
   return insertedJob.id
 }
 
+async function queueCandidateFollowupEmail(
+  supabase: ReturnType<typeof createClient>,
+  applicantId: string,
+  now: string,
+  voiceEvaluation: Record<string, any>,
+) {
+  const { data: applicant, error: applicantError } = await supabase
+    .from('applicants')
+    .select('email')
+    .eq('id', applicantId)
+    .single()
+
+  if (applicantError) throw applicantError
+  if (!applicant?.email) return null
+
+  const { data: existingJob, error: existingJobError } = await supabase
+    .from('automation_jobs')
+    .select('id, workflow_run_id, job_status')
+    .eq('applicant_id', applicantId)
+    .eq('job_type', 'send_candidate_followup_email')
+    .order('created_at', { ascending: false })
+    .limit(1)
+    .maybeSingle()
+
+  if (existingJobError) throw existingJobError
+
+  let automationJobId = existingJob?.id ?? null
+  if (!automationJobId) {
+    const { data: workflowRun } = await supabase
+      .from('workflow_runs')
+      .select('id')
+      .eq('applicant_id', applicantId)
+      .order('created_at', { ascending: false })
+      .limit(1)
+      .maybeSingle()
+
+    const { data: insertedJob, error: insertJobError } = await supabase
+      .from('automation_jobs')
+      .insert({
+        applicant_id: applicantId,
+        workflow_run_id: workflowRun?.id ?? null,
+        job_type: 'send_candidate_followup_email',
+        job_label: 'Send candidate follow-up email',
+        job_status: 'queued',
+        priority: 9,
+        scheduled_for: now,
+        payload: {
+          channel: 'email',
+          template: 'voice_review_followup',
+        },
+      })
+      .select('id')
+      .single()
+
+    if (insertJobError) throw insertJobError
+    automationJobId = insertedJob.id
+  } else {
+    const { error: wakeJobError } = await supabase
+      .from('automation_jobs')
+      .update({
+        job_status: 'queued',
+        scheduled_for: now,
+        last_error: null,
+        updated_at: now,
+      })
+      .eq('id', automationJobId)
+      .in('job_status', ['blocked', 'queued', 'failed', 'running'])
+
+    if (wakeJobError) throw wakeJobError
+  }
+
+  const { data: existingNotification, error: existingNotificationError } = await supabase
+    .from('notification_queue')
+    .select('id')
+    .eq('applicant_id', applicantId)
+    .eq('channel', 'email')
+    .contains('metadata', { template: 'voice_review_followup' })
+    .limit(1)
+    .maybeSingle()
+
+  if (existingNotificationError) throw existingNotificationError
+  if (existingNotification) return existingNotification.id
+
+  const { data: insertedNotification, error: notificationError } = await supabase
+    .from('notification_queue')
+    .insert({
+      applicant_id: applicantId,
+      automation_job_id: automationJobId,
+      channel: 'email',
+      recipient: applicant.email,
+      subject: 'Thank you for completing your ViankaX interview',
+      message: 'Thank you for completing the ViankaX hiring automation steps. Our team will review your application, screening results, and voice interview details. We will be in touch with next steps.',
+      notification_status: 'queued',
+      scheduled_for: now,
+      metadata: {
+        template: 'voice_review_followup',
+        voiceScore: voiceEvaluation.score,
+        recommendation: voiceEvaluation.recommendation,
+        shouldSchedule: voiceEvaluation.shouldSchedule,
+      },
+    })
+    .select('id')
+    .single()
+
+  if (notificationError) throw notificationError
+  return insertedNotification.id
+}
+
 Deno.serve(async (request) => {
   if (request.method === 'OPTIONS') {
     return new Response('ok', { headers: corsHeaders })
@@ -407,6 +515,9 @@ Deno.serve(async (request) => {
       const schedulingJobId = voiceEvaluation.shouldSchedule
         ? await wakeSchedulingJob(supabase, applicantId, now)
         : null
+      const followupEmailId = voiceEvaluation.shouldSchedule
+        ? null
+        : await queueCandidateFollowupEmail(supabase, applicantId, now, voiceEvaluation)
       const [{ error: scoreError }, { error: applicantError }, { error: historyError }, { error: eventError }, { error: scheduleBlockError }] = await Promise.all([
         supabase
           .from('candidate_scores')
@@ -447,6 +558,7 @@ Deno.serve(async (request) => {
               providerScore,
               eventType,
               schedulingJobId,
+              followupEmailId,
               notes: voiceEvaluation.summary,
               concerns: voiceEvaluation.concerns,
               recommendation: finalRecommendation,

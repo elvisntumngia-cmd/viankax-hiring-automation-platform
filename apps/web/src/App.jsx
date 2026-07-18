@@ -27,6 +27,7 @@ import JobsPage from './pages/JobsPage'
 import LoginPage from './pages/LoginPage'
 import OpenShiftsPage from './pages/OpenShiftsPage'
 import SitesPage from './pages/SitesPage'
+import VoiceInterviewTriggerPage from './pages/VoiceInterviewTriggerPage'
 
 const navigationLinks = [
   { label: 'Home', to: '/', icon: Home, end: true },
@@ -147,6 +148,7 @@ function App() {
         <Route path="/jobs/:jobId" element={<JobDetailsPage />} />
         <Route path="/apply/:jobId" element={<ApplicationPage />} />
         <Route path="/screening/:applicantId" element={<AiScreeningPage />} />
+        <Route path="/voice/:applicantId" element={<VoiceInterviewTriggerPage />} />
         <Route path="/success" element={<ApplicationSuccessPage />} />
         <Route path="/status" element={<ApplicationStatusPage />} />
         <Route path="/login" element={<LoginPage />} />

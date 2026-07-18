@@ -18,6 +18,14 @@ const demoAutomationDelays = {
   deferredRetryMs: 15 * 1000,
 }
 
+const candidateEmailJobTypes = [
+  'send_confirmation_email',
+  'send_ai_assessment',
+  'send_screening_complete_email',
+  'send_final_candidate_email',
+  'send_candidate_followup_email',
+]
+
 export const defaultCalendarSettings = {
   provider: 'Internal calendar',
   interviewerEmail: 'hr@viankax.com',
@@ -1205,6 +1213,19 @@ export async function submitAiScreeningAssessment(applicantId, answers, applican
   const scores = scoreAssessmentAnswers(answers, applicant)
   const shouldStartVoiceInterview = ['Strong Candidate', 'Moderate Candidate'].includes(scores.recommendation) &&
     !['Hold for HR review', 'Reject'].includes(scores.suggestedNextStep)
+  const appOrigin = typeof window !== 'undefined' ? window.location.origin : ''
+  const voiceUrl = appOrigin ? `${appOrigin}/voice/${applicantId}` : `/voice/${applicantId}`
+  const { data: screeningEmailJob, error: screeningEmailJobError } = await supabase
+    .from('automation_jobs')
+    .select('id')
+    .eq('applicant_id', applicantId)
+    .eq('job_type', 'send_screening_complete_email')
+    .order('created_at', { ascending: false })
+    .limit(1)
+    .maybeSingle()
+
+  if (screeningEmailJobError) throw screeningEmailJobError
+
   const answerRows = Object.entries(answers).map(([question, answer]) => ({
     applicant_id: applicantId,
     question: aiScreeningAnswerLabels[question] ?? question,
@@ -1278,16 +1299,48 @@ export async function submitAiScreeningAssessment(applicantId, answers, applican
     supabase
       .from('automation_jobs')
       .update({
-        job_status: shouldStartVoiceInterview ? 'queued' : 'blocked',
+        job_status: 'blocked',
         scheduled_for: now,
         last_error: shouldStartVoiceInterview
-          ? null
+          ? 'Waiting for candidate to trigger voice interview from email link.'
           : `AI screening recommended: ${scores.suggestedNextStep}.`,
         updated_at: now,
       })
       .eq('applicant_id', applicantId)
       .eq('job_type', 'voice_interview_analysis')
       .in('job_status', ['blocked', 'queued', 'running', 'failed']),
+    supabase
+      .from('automation_jobs')
+      .update({
+        job_status: 'queued',
+        scheduled_for: now,
+        last_error: null,
+        updated_at: now,
+      })
+      .eq('applicant_id', applicantId)
+      .eq('job_type', 'send_screening_complete_email')
+      .in('job_status', ['blocked', 'queued', 'running', 'failed']),
+    supabase
+      .from('notification_queue')
+      .insert({
+        applicant_id: applicantId,
+        automation_job_id: screeningEmailJob?.id ?? null,
+        channel: 'email',
+        recipient: applicant.email,
+        subject: 'Your ViankaX screening is complete',
+        message: shouldStartVoiceInterview
+          ? `Your AI screening is complete. Please trigger your voice interview when you are ready: ${voiceUrl}`
+          : 'Your AI screening is complete. Our hiring team will review your application and follow up with next steps.',
+        notification_status: 'queued',
+        scheduled_for: now,
+        metadata: {
+          template: 'screening_complete_voice_trigger',
+          voiceUrl: shouldStartVoiceInterview ? voiceUrl : null,
+          screeningScore: scores.screeningScore,
+          recommendation: scores.recommendation,
+          suggestedNextStep: scores.suggestedNextStep,
+        },
+      }),
     supabase
       .from('automation_events')
       .update({
@@ -1371,19 +1424,17 @@ export async function submitAiScreeningAssessment(applicantId, answers, applican
   const operationError = results.find((result) => result.error)?.error
   if (operationError) throw operationError
 
-  let automationKickoff = null
-  if (shouldStartVoiceInterview) {
-    try {
-      const { data, error } = await supabase.functions.invoke('process-automation-jobs', {
-        body: { mode: 'ai-screening-submit-kickoff', maxJobs: 3 },
-      })
+  let automationKickoff
+  try {
+    const { data, error } = await supabase.functions.invoke('process-automation-jobs', {
+      body: { mode: 'ai-screening-submit-email-kickoff', maxJobs: 3 },
+    })
 
-      automationKickoff = error
-        ? { ok: false, message: error.message }
-        : { ok: true, message: data?.message ?? 'Automation kickoff requested.', data }
-    } catch (kickoffError) {
-      automationKickoff = { ok: false, message: kickoffError.message }
-    }
+    automationKickoff = error
+      ? { ok: false, message: error.message }
+      : { ok: true, message: data?.message ?? 'Screening completion email kickoff requested.', data }
+  } catch (kickoffError) {
+    automationKickoff = { ok: false, message: kickoffError.message }
   }
 
   return {
@@ -1391,6 +1442,92 @@ export async function submitAiScreeningAssessment(applicantId, answers, applican
     scores,
     summary: aiSummary,
     automationKickoff,
+  }
+}
+
+export async function triggerVoiceInterview(applicantId) {
+  if (!isSupabaseConfigured) {
+    throw new Error('Supabase is not configured.')
+  }
+
+  const now = new Date().toISOString()
+  const { data: jobs, error: jobError } = await supabase
+    .from('automation_jobs')
+    .select('id, job_status')
+    .eq('applicant_id', applicantId)
+    .eq('job_type', 'voice_interview_analysis')
+    .order('created_at', { ascending: false })
+    .limit(1)
+
+  if (jobError) throw jobError
+  const job = jobs?.[0]
+  if (!job) throw new Error('No voice interview automation job was found for this applicant.')
+
+  const { data: existingVoiceInterview, error: existingVoiceError } = await supabase
+    .from('voice_interviews')
+    .select('id, provider_call_id, status')
+    .eq('applicant_id', applicantId)
+    .eq('provider', 'vapi')
+    .not('provider_call_id', 'is', null)
+    .order('created_at', { ascending: false })
+    .limit(1)
+    .maybeSingle()
+
+  if (existingVoiceError) throw existingVoiceError
+  if (existingVoiceInterview?.provider_call_id) {
+    return {
+      ok: true,
+      alreadyStarted: true,
+      message: 'Your voice interview has already been started. Please answer or check your recent calls.',
+      voiceInterview: existingVoiceInterview,
+    }
+  }
+
+  const { error: updateError } = await supabase
+    .from('automation_jobs')
+    .update({
+      job_status: 'queued',
+      scheduled_for: now,
+      attempts: 0,
+      last_error: null,
+      payload: { provider: 'vapi', mode: 'candidate_triggered_voice_interview' },
+      updated_at: now,
+    })
+    .eq('id', job.id)
+    .in('job_status', ['blocked', 'queued', 'failed', 'running'])
+
+  if (updateError) throw updateError
+
+  const { error: eventError } = await supabase
+    .from('automation_events')
+    .insert({
+      applicant_id: applicantId,
+      event_type: 'candidate_triggered_voice_interview',
+      event_status: 'complete',
+      event_label: 'Candidate Triggered Voice Interview',
+      metadata: {
+        description: 'Candidate clicked the secure voice interview link from the screening completion email.',
+        automationJobId: job.id,
+      },
+    })
+
+  if (eventError) throw eventError
+
+  const { data, error } = await supabase.functions.invoke('process-automation-jobs', {
+    body: { mode: 'candidate-triggered-voice-interview', maxJobs: 3 },
+  })
+
+  if (error) {
+    return {
+      ok: false,
+      message: error.message,
+    }
+  }
+
+  return {
+    ok: true,
+    message: data?.message ?? 'Voice interview call requested. Please keep your phone nearby.',
+    data,
   }
 }
 
@@ -1499,12 +1636,15 @@ async function updateWorkflowAfterJob(workflowRunId) {
 function processedEventForJob(job) {
   const eventMap = {
     send_confirmation_sms: ['confirmation_sms_sent', 'Confirmation SMS Sent', 'Placeholder SMS confirmation was marked as sent.'],
-    send_confirmation_email: ['confirmation_email_sent', 'Confirmation Email Sent', 'Placeholder email confirmation was marked as sent.'],
+    send_confirmation_email: ['application_screening_email_sent', 'Application & Screening Email Sent', 'Candidate received application confirmation and screening invitation.'],
     parse_resume: ['resume_screened', 'Resume Screened', 'Placeholder resume parsing completed and candidate moved forward.'],
-    send_ai_assessment: ['ai_assessment_sent', 'AI Assessment Sent', 'Placeholder AI screening assessment invite was queued for the candidate.'],
+    send_ai_assessment: ['ai_assessment_sent', 'AI Assessment Sent', 'AI screening assessment invite job completed.'],
+    send_screening_complete_email: ['screening_complete_email_sent', 'Screening Complete Email Sent', 'Candidate received the voice interview trigger link.'],
     evaluate_ai_assessment: ['ai_screening_evaluated', 'AI Screening Evaluated', 'Placeholder AI screening evaluation generated structured candidate scores.'],
     verify_license: ['license_verification_completed', 'License Verification Completed', 'Placeholder license verification completed.'],
     send_scheduling_link: ['scheduling_link_sent', 'Scheduling Link Sent', 'Placeholder scheduling link was marked as sent.'],
+    send_final_candidate_email: ['final_candidate_email_sent', 'Final Candidate Email Sent', 'Candidate received final interview or follow-up instructions.'],
+    send_candidate_followup_email: ['candidate_followup_email_sent', 'Candidate Follow-up Email Sent', 'Candidate received post-voice follow-up instructions.'],
     voice_interview_analysis: ['voice_interview_analyzed', 'Voice Interview Analyzed', 'Placeholder voice interview analysis completed.'],
   }
   const [type, label, description] = eventMap[job.job_type] ?? ['automation_job_processed', 'Automation Job Processed', 'Placeholder automation job completed.']
@@ -1537,13 +1677,14 @@ async function applyPlaceholderJobEffects(job) {
     )
   }
 
-  if (job.job_type === 'send_confirmation_email' || job.job_type === 'send_ai_assessment') {
+  if (candidateEmailJobTypes.includes(job.job_type)) {
     effects.push(
       supabase
         .from('notification_queue')
         .update({ notification_status: 'sent', sent_at: now, updated_at: now })
         .eq('applicant_id', job.applicant_id)
         .eq('channel', 'email')
+        .eq('automation_job_id', job.id)
         .eq('notification_status', 'queued'),
     )
   }
@@ -2241,7 +2382,7 @@ function automationJobRows(applicantId, workflowRunId, application, uploadedDocu
       job_type: 'voice_interview_analysis',
       job_label: 'Analyze voice interview',
       job_status: 'blocked',
-      priority: 6,
+      priority: 7,
       scheduled_for: scheduledNow,
       last_error: 'Waiting for AI screening recommendation.',
       payload: { provider: 'voice_ai_placeholder', mode: 'automated_voice_screening' },
@@ -2249,13 +2390,35 @@ function automationJobRows(applicantId, workflowRunId, application, uploadedDocu
     {
       applicant_id: applicantId,
       workflow_run_id: workflowRunId,
+      job_type: 'send_screening_complete_email',
+      job_label: 'Send screening complete email',
+      job_status: 'blocked',
+      priority: 6,
+      scheduled_for: scheduledNow,
+      last_error: 'Waiting for candidate to complete AI screening.',
+      payload: { channel: 'email', template: 'screening_complete_voice_trigger' },
+    },
+    {
+      applicant_id: applicantId,
+      workflow_run_id: workflowRunId,
       job_type: 'send_scheduling_link',
       job_label: 'Schedule final in-person interview',
       job_status: 'blocked',
-      priority: 7,
+      priority: 8,
       scheduled_for: scheduledNow,
       last_error: 'Waiting for voice interview completion.',
       payload: { provider: 'calendar_placeholder', mode: 'auto_schedule_final_interview' },
+    },
+    {
+      applicant_id: applicantId,
+      workflow_run_id: workflowRunId,
+      job_type: 'send_final_candidate_email',
+      job_label: 'Send final candidate email',
+      job_status: 'blocked',
+      priority: 9,
+      scheduled_for: scheduledNow,
+      last_error: 'Waiting for voice interview outcome.',
+      payload: { channel: 'email', template: 'final_candidate_outcome' },
     },
   ]
 }
@@ -2268,7 +2431,6 @@ function notificationRows(applicantId, application, automationJobs = []) {
   if (application.knockoutResult === 'Failed') return []
 
   const scheduledNow = new Date().toISOString()
-  const aiAssessmentScheduledFor = new Date(Date.now() + demoAutomationDelays.aiAssessmentInviteMs).toISOString()
   const appOrigin = typeof window !== 'undefined' ? window.location.origin : ''
   const assessmentUrl = appOrigin ? `${appOrigin}/screening/${applicantId}` : `/screening/${applicantId}`
 
@@ -2288,22 +2450,11 @@ function notificationRows(applicantId, application, automationJobs = []) {
       automation_job_id: findAutomationJobId(automationJobs, 'send_confirmation_email'),
       channel: 'email',
       recipient: application.email,
-      subject: 'Your application was received',
-      message: 'Your application has been received. The hiring automation workflow will update your status as screening progresses.',
+      subject: 'Your application was received - complete your screening',
+      message: `Your application has been received. Please complete your AI screening assessment so the hiring team can continue reviewing your application: ${assessmentUrl}`,
       notification_status: 'queued',
       scheduled_for: scheduledNow,
-      metadata: { template: 'application_confirmation' },
-    },
-    {
-      applicant_id: applicantId,
-      automation_job_id: findAutomationJobId(automationJobs, 'send_ai_assessment'),
-      channel: 'email',
-      recipient: application.email,
-      subject: 'Complete your ViankaX screening assessment',
-      message: `Please complete your AI screening assessment so the hiring team can continue reviewing your application: ${assessmentUrl}`,
-      notification_status: 'queued',
-      scheduled_for: aiAssessmentScheduledFor,
-      metadata: { template: 'ai_assessment_invite', assessmentUrl },
+      metadata: { template: 'application_confirmation_with_screening', assessmentUrl },
     },
   ]
 }
