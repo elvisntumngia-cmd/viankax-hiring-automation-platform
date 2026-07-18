@@ -1,6 +1,7 @@
 import { useState } from 'react'
 import { Link, useParams } from 'react-router-dom'
 import AutomationEventsPanel from '../components/AutomationEventsPanel'
+import AutomationOutcomePanel from '../components/AutomationOutcomePanel'
 import AutomationQueuePanel from '../components/AutomationQueuePanel'
 import AiRecommendationPanel from '../components/AiRecommendationPanel'
 import AiScreeningPanel from '../components/AiScreeningPanel'
@@ -342,6 +343,10 @@ function ApplicantDetailPage() {
 
       <div className="mb-6">
         <AutomationTimeline applicant={applicant} />
+      </div>
+
+      <div className="mb-6">
+        <AutomationOutcomePanel applicant={applicant} />
       </div>
 
       <div className="mb-6">

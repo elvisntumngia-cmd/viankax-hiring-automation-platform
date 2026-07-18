@@ -3,7 +3,7 @@ import { Link } from 'react-router-dom'
 import AutomationTimeline from '../components/AutomationTimeline'
 import PageHeader from '../components/PageHeader'
 import { lookupApplicationStatus } from '../services/supabaseData'
-import { formatScore, getCandidateScores } from '../utils/candidateInsights'
+import { formatScore, getAutomationOutcome, getCandidateScores, hasNotificationSubject, hasNotificationTemplate } from '../utils/candidateInsights'
 import { getLastApplication } from '../utils/applicationStorage'
 
 function getScreeningStatus(application) {
@@ -20,10 +20,8 @@ function getScreeningStatus(application) {
     }
   }
 
-  const inviteSent = application.notifications?.some((notification) =>
-    notification.subject === 'Complete your ViankaX screening assessment' &&
-    notification.status === 'sent',
-  )
+  const inviteSent = hasNotificationTemplate(application, 'application_confirmation_with_screening') ||
+    hasNotificationSubject(application, 'Your application was received - complete your screening')
 
   if (inviteSent) {
     return {
@@ -44,7 +42,11 @@ function getScreeningStatus(application) {
 
 function getStatusMilestones(application) {
   const scores = getCandidateScores(application)
-  const notificationSubjects = new Set((application.notifications ?? []).map((notification) => notification.subject))
+  const screeningInviteSent = hasNotificationTemplate(application, 'application_confirmation_with_screening') ||
+    hasNotificationSubject(application, 'Your application was received - complete your screening')
+  const voiceTriggerSent = hasNotificationTemplate(application, 'screening_complete_voice_trigger')
+  const finalEmailSent = hasNotificationTemplate(application, 'final_interview_scheduled') ||
+    hasNotificationTemplate(application, 'voice_review_followup')
   const documentsUploaded = Object.values(application.documents ?? {}).some((status) =>
     ['Uploaded', 'Received', 'Verified'].includes(status),
   )
@@ -56,9 +58,9 @@ function getStatusMilestones(application) {
       description: 'Your application is in the ViankaX hiring workflow.',
     },
     {
-      label: 'AI Screening Sent',
-      state: notificationSubjects.has('Complete your ViankaX screening assessment') ? 'complete' : 'current',
-      description: 'Screening link is emailed after the application is accepted by automation.',
+      label: 'Application + Screening Email',
+      state: screeningInviteSent ? 'complete' : 'current',
+      description: 'Your first email confirms the application and includes the AI screening link.',
     },
     {
       label: 'AI Screening Completed',
@@ -71,9 +73,15 @@ function getStatusMilestones(application) {
       description: `License status: ${application.licenseStatus ?? 'Pending'}`,
     },
     {
-      label: 'Voice Interview',
-      state: application.voiceInterview?.status === 'Completed' || Number.isFinite(scores.voiceInterviewScore) ? 'complete' : 'pending',
-      description: `Voice score: ${formatScore(scores.voiceInterviewScore)}`,
+      label: 'Voice Interview Trigger',
+      state: application.voiceInterview?.status === 'Complete' || application.voiceInterview?.status === 'Completed' || Number.isFinite(scores.voiceInterviewScore)
+        ? 'complete'
+        : voiceTriggerSent
+          ? 'current'
+          : 'pending',
+      description: voiceTriggerSent
+        ? `Voice trigger email sent. Voice score: ${formatScore(scores.voiceInterviewScore)}`
+        : `Voice score: ${formatScore(scores.voiceInterviewScore)}`,
     },
     {
       label: 'Interview Scheduled',
@@ -81,12 +89,12 @@ function getStatusMilestones(application) {
       description: application.interviewTime ?? 'Not scheduled',
     },
     {
-      label: 'Final Decision',
-      state: ['Hired', 'Rejected'].includes(application.stage) ||
+      label: 'Final Candidate Email',
+      state: finalEmailSent || ['Hired', 'Rejected'].includes(application.stage) ||
         (Boolean(application.decision) && application.decision !== 'Pending')
         ? 'complete'
         : 'pending',
-      description: application.decision ?? 'Pending',
+      description: finalEmailSent ? 'Final scheduling or follow-up email sent.' : application.decision ?? 'Pending',
     },
   ]
 }
@@ -98,6 +106,7 @@ function ApplicationStatusPage() {
   const [status, setStatus] = useState('idle')
   const [error, setError] = useState('')
   const statusMilestones = application ? getStatusMilestones(application) : []
+  const automationOutcome = application ? getAutomationOutcome(application) : null
 
   async function searchStatus(event) {
     event.preventDefault()
@@ -186,7 +195,7 @@ function ApplicationStatusPage() {
             </div>
             <div className="rounded-lg border border-[#E5E7EB] bg-white p-5 shadow-sm">
               <p className="text-sm font-semibold text-[#6B7280]">Next step</p>
-              <p className="mt-2 text-lg font-semibold text-[#111827]">{screeningStatus.nextStep}</p>
+              <p className="mt-2 text-lg font-semibold text-[#111827]">{automationOutcome?.nextStep ?? screeningStatus.nextStep}</p>
             </div>
           </div>
         )
@@ -214,8 +223,8 @@ function ApplicationStatusPage() {
             Basic screening: {application.knockoutResult}
           </div>
           <div className="mt-4 rounded-md border border-blue-100 bg-blue-50 p-3 text-sm leading-6 text-blue-800">
-            Automation engine: dashboard sync complete. AI screening, license review,
-            voice interview, placement matching, and scheduling updates will appear here as they run.
+            <p className="font-semibold">{automationOutcome.title}</p>
+            <p className="mt-1">{automationOutcome.summary}</p>
           </div>
           {application.finalInterview?.status === 'Scheduled' ? (
             <div className="mt-4 rounded-md border border-green-200 bg-green-50 p-3 text-sm leading-6 text-green-800">

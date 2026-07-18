@@ -1,6 +1,7 @@
 import { ArrowRight, Brain, CalendarCheck, CheckCircle2, Clock3, FileWarning, Play, ShieldAlert, ShieldCheck, Star, UserPlus, UsersRound } from 'lucide-react'
 import { useState } from 'react'
 import { Link } from 'react-router-dom'
+import AutomationOutcomePanel from '../components/AutomationOutcomePanel'
 import AutomationQueuePanel from '../components/AutomationQueuePanel'
 import AutomationRunHistoryPanel from '../components/AutomationRunHistoryPanel'
 import PageHeader from '../components/PageHeader'
@@ -17,6 +18,7 @@ function DashboardPage() {
   const { data: automationQueue, status: queueStatus, error: queueError, reload: reloadAutomationQueue } = useSupabaseData(fetchAutomationQueueSummary, [])
   const { data: automationHistory, reload: reloadAutomationHistory } = useSupabaseData(fetchAutomationRunHistory, [])
   const applicants = [...backendApplicants, ...getStoredApplications()]
+  const showDebugAutomationControls = import.meta.env.VITE_SHOW_AUTOMATION_DEBUG === 'true'
   const pendingAiReview = applicants.filter((applicant) => matchesPipelinePreset(applicant, 'pending-ai-review')).length
   const pendingComplianceReview = applicants.filter((applicant) => matchesPipelinePreset(applicant, 'pending-compliance-review')).length
   const pendingInterviews = applicants.filter((applicant) => matchesPipelinePreset(applicant, 'pending-interviews')).length
@@ -169,6 +171,27 @@ function DashboardPage() {
         </div>
       </div>
 
+      <section className="mt-6 sm:mt-8">
+        <div className="mb-4 flex flex-col gap-2 sm:flex-row sm:items-end sm:justify-between">
+          <div>
+            <h2 className="text-lg font-semibold text-white">Automation outcomes</h2>
+            <p className="mt-1 text-sm text-zinc-400">
+              Plain-English status for the latest applicants moving through screening, voice, scheduling, and review.
+            </p>
+          </div>
+          <Link to="/dashboard/applicants" className="w-fit text-sm font-semibold text-blue-300 hover:text-white">
+            Open pipeline
+          </Link>
+        </div>
+        <div className="grid gap-4 lg:grid-cols-3">
+          {applicants.slice(0, 3).map((applicant) => (
+            <Link key={applicant.id} to={`/dashboard/applicants/${applicant.id}`} className="block">
+              <AutomationOutcomePanel applicant={applicant} compact />
+            </Link>
+          ))}
+        </div>
+      </section>
+
       <div className="mt-6 sm:mt-8">
         {queueStatus === 'error' ? (
           <div className="mb-5 rounded-lg border border-amber-400/30 bg-amber-500/10 p-4 text-sm text-amber-200">
@@ -189,7 +212,7 @@ function DashboardPage() {
           jobs={automationQueue}
           title="Automation job queue"
           description="Phase 3A backend foundation: queued workflow tasks for confirmations, resume parsing, AI screening, compliance review, voice interviews, and scheduling."
-          action={
+          action={showDebugAutomationControls ? (
             <button
               type="button"
               onClick={runAutomationJob}
@@ -199,8 +222,13 @@ function DashboardPage() {
               <Play size={16} />
               {processorState.busy ? 'Running...' : 'Run next job'}
             </button>
-          }
+          ) : null}
         />
+        {!showDebugAutomationControls ? (
+          <p className="mt-3 text-xs font-semibold text-zinc-500">
+            Manual automation controls are hidden in normal HR mode. Set VITE_SHOW_AUTOMATION_DEBUG=true for demo/debug runs.
+          </p>
+        ) : null}
       </div>
 
       <div className="mt-6 sm:mt-8">

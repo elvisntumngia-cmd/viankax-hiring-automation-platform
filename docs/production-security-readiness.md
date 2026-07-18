@@ -8,6 +8,7 @@ This document separates demo behavior from production behavior so we can keep te
 - Supabase Edge Functions use service-role secrets server-side.
 - Public applicant routes can create applications, upload documents, and complete screening.
 - Some RLS policies remain permissive so the live demo can be tested without a tenant/admin system.
+- Manual automation controls are intended for debug/demo use only and should stay hidden unless `VITE_SHOW_AUTOMATION_DEBUG=true`.
 
 ## Before Customer Launch
 
@@ -20,6 +21,7 @@ This document separates demo behavior from production behavior so we can keep te
 7. Add audit events for HR decisions, placement assignment, calendar updates, and settings changes.
 8. Use separate Supabase projects or environments for local, demo, staging, and production.
 9. Rotate exposed test keys before any customer pilot.
+10. Keep `VITE_SHOW_AUTOMATION_DEBUG=false` on normal live HR demos and client environments.
 
 ## Secrets That Must Stay Server-Side
 

@@ -38,11 +38,129 @@ export function formatScore(score) {
   return Number.isFinite(score) ? `${score}%` : 'Pending'
 }
 
+export function hasNotificationTemplate(applicant, template) {
+  return (applicant.notifications ?? []).some((notification) => notification.metadata?.template === template)
+}
+
+export function hasNotificationSubject(applicant, subject) {
+  return (applicant.notifications ?? []).some((notification) => notification.subject === subject)
+}
+
 export function getScoreTone(score) {
   if (!Number.isFinite(score)) return 'pending'
   if (score >= 85) return 'strong'
   if (score >= 70) return 'review'
   return 'risk'
+}
+
+export function getAutomationOutcome(applicant) {
+  const scores = getCandidateScores(applicant)
+  const voiceStatus = applicant.voiceInterview?.status ?? applicant.interviewStatus
+  const voiceRecommendation = applicant.voiceInterview?.recommendation ?? ''
+  const finalInterviewScheduled = applicant.finalInterview?.status === 'Scheduled' || applicant.interviewStatus === 'Scheduled'
+  const screeningComplete = Number.isFinite(scores.screeningScore) || applicant.aiScreening?.status === 'completed'
+  const voiceComplete = voiceStatus === 'Complete' || voiceStatus === 'Completed' || Number.isFinite(scores.voiceInterviewScore)
+  const screeningInviteSent = hasNotificationTemplate(applicant, 'application_confirmation_with_screening') ||
+    hasNotificationSubject(applicant, 'Your application was received - complete your screening')
+  const voiceTriggerSent = hasNotificationTemplate(applicant, 'screening_complete_voice_trigger')
+  const followupSent = hasNotificationTemplate(applicant, 'voice_review_followup')
+  const finalEmailSent = hasNotificationTemplate(applicant, 'final_interview_scheduled')
+  const failedGuardrail = voiceComplete && (
+    scores.voiceInterviewScore < 70 ||
+    /not recommended|hold|hr review|guardrail/i.test(voiceRecommendation)
+  )
+
+  if (finalInterviewScheduled) {
+    return {
+      tone: 'strong',
+      title: 'Automated path complete',
+      status: 'Scheduled',
+      summary: 'Candidate completed screening and voice interview. The system scheduled a final in-person interview and synced the dashboard.',
+      nextStep: 'HR should review the final interview and placement recommendation.',
+      bullets: [
+        `Screening: ${formatScore(scores.screeningScore)}`,
+        `Voice: ${formatScore(scores.voiceInterviewScore)}`,
+        finalEmailSent ? 'Candidate final interview email sent' : 'Final candidate email pending',
+      ],
+    }
+  }
+
+  if (failedGuardrail) {
+    return {
+      tone: 'risk',
+      title: 'Voice guardrail review',
+      status: 'Needs Review',
+      summary: 'Voice interview completed, but scoring guardrails blocked automatic scheduling because the transcript needs human review.',
+      nextStep: followupSent ? 'Candidate follow-up email was sent. HR can review the transcript.' : 'Send or process candidate follow-up email.',
+      bullets: [
+        `Voice: ${formatScore(scores.voiceInterviewScore)}`,
+        voiceRecommendation || 'Recommendation pending',
+        'Final interview was not auto-scheduled',
+      ],
+    }
+  }
+
+  if (voiceComplete) {
+    return {
+      tone: 'review',
+      title: 'Voice interview complete',
+      status: 'Scheduling Pending',
+      summary: 'Candidate completed voice interview. Scheduling is waiting for automation, calendar sync, or HR review.',
+      nextStep: 'Confirm scheduling job and calendar status.',
+      bullets: [
+        `Voice: ${formatScore(scores.voiceInterviewScore)}`,
+        voiceRecommendation || 'Recommendation pending',
+      ],
+    }
+  }
+
+  if (voiceTriggerSent) {
+    return {
+      tone: 'current',
+      title: 'Voice interview ready',
+      status: 'Waiting on Candidate',
+      summary: 'AI screening is complete and the candidate has received the voice interview trigger link.',
+      nextStep: 'Candidate should click the voice link and answer the Vapi call.',
+      bullets: [
+        `Screening: ${formatScore(scores.screeningScore)}`,
+        'Voice trigger email sent',
+      ],
+    }
+  }
+
+  if (screeningComplete) {
+    return {
+      tone: 'review',
+      title: 'Screening complete',
+      status: 'Next Email Pending',
+      summary: 'Structured AI screening data is available. The next candidate email should provide the voice interview trigger or HR-review follow-up.',
+      nextStep: 'Process screening completion email.',
+      bullets: [
+        `Screening: ${formatScore(scores.screeningScore)}`,
+        applicant.aiScreening?.recommendation ?? 'Recommendation pending',
+      ],
+    }
+  }
+
+  if (screeningInviteSent) {
+    return {
+      tone: 'current',
+      title: 'Screening invite sent',
+      status: 'Waiting on Candidate',
+      summary: 'Candidate received the combined application confirmation and AI screening link.',
+      nextStep: 'Candidate should complete AI screening.',
+      bullets: ['Email 1 sent', 'AI screening pending'],
+    }
+  }
+
+  return {
+    tone: 'pending',
+    title: 'Workflow starting',
+    status: 'Pending',
+    summary: 'Application was received and the automation engine is preparing the first candidate communication.',
+    nextStep: 'Send application confirmation and screening link.',
+    bullets: ['Application received', 'Screening invite pending'],
+  }
 }
 
 export function getAutomationTimeline(applicant) {

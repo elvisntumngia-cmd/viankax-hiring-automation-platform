@@ -6,7 +6,7 @@ import { applicants as dummyApplicants, pipelineStages } from '../data/dummyAppl
 import useSupabaseData from '../hooks/useSupabaseData'
 import { fetchApplicants, updateApplicantDecision } from '../services/supabaseData'
 import { getStoredApplications } from '../utils/applicationStorage'
-import { formatScore, getCandidateScores, matchesPipelinePreset, pipelineFilterPresets } from '../utils/candidateInsights'
+import { formatScore, getAutomationOutcome, getCandidateScores, matchesPipelinePreset, pipelineFilterPresets } from '../utils/candidateInsights'
 
 const stageClass = {
   'New Applicant': 'bg-slate-700/70 text-slate-100',
@@ -224,6 +224,16 @@ function ApplicantsPipelinePage() {
         <div className="grid gap-3 p-4 md:hidden">
           {filteredApplicants.map((applicant) => (
             <article key={applicant.id} className="rounded-lg border border-white/[0.08] bg-[#080D14] p-4">
+              {(() => {
+                const outcome = getAutomationOutcome(applicant)
+                return (
+                  <div className="mb-4 rounded-md border border-white/[0.08] bg-white/[0.04] p-3">
+                    <p className="text-xs font-semibold uppercase tracking-wide text-zinc-500">Automation outcome</p>
+                    <p className="mt-1 font-semibold text-white">{outcome.title}</p>
+                    <p className="mt-1 text-sm text-zinc-400">{outcome.status}</p>
+                  </div>
+                )
+              })()}
               <div className="flex items-start justify-between gap-3">
                 <div className="min-w-0">
                   <h3 className="font-semibold text-white">{applicant.name}</h3>
@@ -321,8 +331,15 @@ function ApplicantsPipelinePage() {
                     <p className="mt-1 text-xs text-zinc-500">{applicant.interviewTime}</p>
                   </td>
                   <td className="px-4 py-4 lg:px-5">
-                    <p className="font-semibold text-zinc-200">{applicant.latestEvent?.label ?? 'No event recorded'}</p>
-                    <p className="mt-1 text-xs text-zinc-500">{applicant.licenseStatus}</p>
+                    {(() => {
+                      const outcome = getAutomationOutcome(applicant)
+                      return (
+                        <>
+                          <p className="font-semibold text-zinc-200">{outcome.title}</p>
+                          <p className="mt-1 text-xs text-zinc-500">{outcome.status}</p>
+                        </>
+                      )
+                    })()}
                   </td>
                   <td className="px-4 py-4 lg:px-5">{formatLastUpdated(applicant.lastUpdatedAt)}</td>
                   <td className="px-4 py-4 lg:px-5">
