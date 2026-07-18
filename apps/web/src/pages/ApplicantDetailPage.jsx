@@ -98,7 +98,7 @@ function getVoiceAutomationSummary(applicant) {
 
   return {
     label: 'Not ready yet',
-    detail: 'Voice interview starts automatically after the applicant completes AI screening and meets the recommendation threshold.',
+    detail: 'Voice interview becomes available after the applicant completes AI screening and receives the trigger link.',
   }
 }
 

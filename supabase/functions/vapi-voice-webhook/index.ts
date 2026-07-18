@@ -66,9 +66,21 @@ function heuristicVoiceEvaluation(transcript: string, providerScore: number | nu
   const normalized = transcript.toLowerCase()
   const words = wordCount(transcript)
   const concerns: string[] = []
-  let score = providerScore ?? 72
+  let score = providerScore ? Math.min(providerScore, 82) : 68
 
-  const nonsenseSignals = ['crab', 'blah', 'asdf', 'nothing to say', 'i do not know', "i don't know", 'no answer']
+  const nonsenseSignals = [
+    'crab',
+    'blah',
+    'asdf',
+    'gibberish',
+    'random',
+    'nothing to say',
+    'i do not know',
+    "i don't know",
+    'no answer',
+    'skip',
+    'whatever',
+  ]
   const nonsenseHits = nonsenseSignals.filter((signal) => normalized.includes(signal))
   const positiveSignals = [
     'security',
@@ -85,11 +97,24 @@ function heuristicVoiceEvaluation(transcript: string, providerScore: number | nu
     'communication',
     'de-escalation',
     'post orders',
+    'observe',
+    'report',
+    'access control',
+    'punctual',
+    'on time',
+    'team',
+    'supervisor',
   ].filter((signal) => normalized.includes(signal))
+  const evidenceCount = new Set(positiveSignals).size
 
   if (words < 25) {
     score = Math.min(score, 45)
     concerns.push('Very limited voice interview response.')
+  }
+
+  if (words < 60) {
+    score = Math.min(score, 62)
+    concerns.push('Voice interview did not include enough detail for automatic scheduling.')
   }
 
   if (nonsenseHits.length) {
@@ -97,13 +122,18 @@ function heuristicVoiceEvaluation(transcript: string, providerScore: number | nu
     concerns.push(`Irrelevant or nonsensical response detected: ${nonsenseHits.join(', ')}.`)
   }
 
-  if (positiveSignals.length < 3 && words < 90) {
+  if (evidenceCount < 3) {
     score = Math.min(score, 58)
     concerns.push('Candidate did not provide enough role-relevant evidence in the voice interview.')
   }
 
-  if (!concerns.length && positiveSignals.length >= 5 && words >= 80) {
-    score = Math.max(score, 82)
+  if (evidenceCount < 5 && words < 120) {
+    score = Math.min(score, 72)
+    concerns.push('Candidate needs HR review because role fit evidence was limited.')
+  }
+
+  if (!concerns.length && evidenceCount >= 7 && words >= 100) {
+    score = Math.max(score, providerScore ? Math.min(providerScore, 92) : 84)
   }
 
   const recommendation = score >= 85
@@ -125,7 +155,46 @@ function heuristicVoiceEvaluation(transcript: string, providerScore: number | nu
     recommendation,
     summary,
     concerns,
-    shouldSchedule: score >= 85,
+    shouldSchedule: score >= 85 && concerns.length === 0,
+  }
+}
+
+function applyVoiceGuardrails(
+  evaluation: Record<string, any>,
+  fallback: ReturnType<typeof heuristicVoiceEvaluation>,
+) {
+  const modelScore = Number(evaluation.score)
+  const safeModelScore = Number.isFinite(modelScore)
+    ? Math.max(0, Math.min(100, Math.round(modelScore)))
+    : fallback.score
+  const hardBlocked = fallback.score < 70 || fallback.concerns.length > 0
+  const score = hardBlocked ? Math.min(safeModelScore, fallback.score) : safeModelScore
+  const concerns = [
+    ...(Array.isArray(evaluation.concerns) ? evaluation.concerns : []),
+    ...fallback.concerns,
+  ].filter(Boolean)
+  const shouldSchedule = Boolean(evaluation.shouldSchedule) &&
+    !hardBlocked &&
+    fallback.shouldSchedule &&
+    score >= 85
+  const recommendation = shouldSchedule
+    ? 'Proceed to final in-person interview'
+    : score >= 70
+      ? 'Proceed with HR review'
+      : score >= 50
+        ? 'Hold for HR review'
+        : 'Not recommended after voice interview'
+  const guardrailNote = hardBlocked
+    ? ' ViankaX guardrails blocked automatic scheduling because the transcript did not provide enough credible role-fit evidence.'
+    : ''
+
+  return {
+    provider: 'openai_guarded',
+    score,
+    recommendation,
+    summary: `${evaluation.summary ?? fallback.summary}${guardrailNote}`,
+    concerns,
+    shouldSchedule,
   }
 }
 
@@ -148,7 +217,13 @@ async function evaluateVoiceInterview(transcript: string, providerScore: number 
         input: [
           {
             role: 'system',
-            content: 'You evaluate a security officer voice interview. Penalize irrelevant, evasive, joking, or nonsensical answers heavily. A candidate should only proceed to final interview if the transcript shows clear role fit, professionalism, communication, availability, and reliability. Return only JSON.',
+            content: [
+              'You evaluate a security officer voice interview for ViankaX.',
+              'Be strict. Penalize irrelevant, evasive, joking, generic, very short, or nonsensical answers heavily.',
+              'Do not recommend final in-person scheduling unless the transcript gives specific evidence of role fit, professionalism, reliability, communication, availability, and security/site readiness.',
+              'A candidate with nonsense answers, one-word answers, vague answers, or fewer than several role-relevant details must be routed to HR review or not recommended.',
+              'Return only JSON.',
+            ].join(' '),
           },
           {
             role: 'user',
@@ -199,14 +274,7 @@ async function evaluateVoiceInterview(transcript: string, providerScore: number 
     const evaluation = JSON.parse(outputText)
     const score = Number(evaluation.score)
 
-    return {
-      provider: 'openai',
-      score: Number.isFinite(score) ? Math.max(0, Math.min(100, Math.round(score))) : fallback.score,
-      recommendation: evaluation.recommendation ?? fallback.recommendation,
-      summary: evaluation.summary ?? fallback.summary,
-      concerns: Array.isArray(evaluation.concerns) ? evaluation.concerns : fallback.concerns,
-      shouldSchedule: Boolean(evaluation.shouldSchedule) && Number(score) >= 85,
-    }
+    return applyVoiceGuardrails(evaluation, fallback)
   } catch (error) {
     return {
       ...fallback,
