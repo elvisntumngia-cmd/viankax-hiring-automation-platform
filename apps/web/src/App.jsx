@@ -68,17 +68,17 @@ function AppShell({ children }) {
     : 'bg-[#F8FAFC] text-[#111827]'
 
   return (
-    <div className="min-h-screen lg:grid lg:grid-cols-[260px_minmax(0,1fr)]">
-      <aside className="border-b border-black/10 bg-[#09090B] px-4 py-4 text-white sm:px-5 lg:min-h-screen lg:border-b-0 lg:border-r lg:py-5">
-        <NavLink to="/" className="flex items-center">
+    <div className="min-h-screen min-w-0 lg:grid lg:grid-cols-[240px_minmax(0,1fr)] xl:grid-cols-[260px_minmax(0,1fr)]">
+      <aside className="min-w-0 border-b border-black/10 bg-[#09090B] px-3 py-3 text-white sm:px-5 lg:min-h-screen lg:border-b-0 lg:border-r lg:py-5">
+        <NavLink to="/" className="flex w-fit items-center">
           <img
             src="/viankax-wordmark.png"
             alt="ViankaX"
-            className="h-[114px] w-auto max-w-[240px] object-contain"
+            className="h-14 w-auto max-w-[150px] object-contain sm:h-20 sm:max-w-[190px] lg:h-[104px] lg:max-w-[220px] xl:h-[114px] xl:max-w-[240px]"
           />
         </NavLink>
 
-        <nav className="mt-4 flex gap-2 overflow-x-auto pb-1 lg:mt-6 lg:grid lg:overflow-visible lg:pb-0">
+        <nav className="mt-3 flex max-w-full gap-2 overflow-x-auto pb-1 [-ms-overflow-style:none] [scrollbar-width:none] sm:mt-4 lg:mt-6 lg:grid lg:overflow-visible lg:pb-0 [&::-webkit-scrollbar]:hidden">
           {navigationLinks.map((link) => {
             const Icon = link.icon
             return (
@@ -103,7 +103,7 @@ function AppShell({ children }) {
         </div>
       </aside>
 
-      <div className={`min-h-screen min-w-0 ${mainClass}`}>
+      <div className={`min-h-screen min-w-0 overflow-x-hidden ${mainClass}`}>
         <header
           className={`sticky top-0 z-20 border-b backdrop-blur ${
             isDarkShell
@@ -111,9 +111,9 @@ function AppShell({ children }) {
               : 'border-[#E5E7EB] bg-white/95'
           }`}
         >
-          <div className="flex px-4 py-3 sm:px-5 lg:px-8">
+          <div className="flex min-w-0 px-3 py-2 sm:px-5 sm:py-3 lg:px-6 xl:px-8">
             <nav
-              className={`flex max-w-full gap-1 overflow-x-auto rounded-lg border p-1 ${
+              className={`flex max-w-full min-w-0 gap-1 overflow-x-auto rounded-lg border p-1 [-ms-overflow-style:none] [scrollbar-width:none] [&::-webkit-scrollbar]:hidden ${
                 isDarkShell
                   ? 'border-white/[0.10] bg-[#09090B]'
                   : 'border-[#E5E7EB] bg-white'
@@ -133,7 +133,7 @@ function AppShell({ children }) {
           </div>
         </header>
 
-        <main className="min-w-0 px-4 py-6 sm:px-5 sm:py-8 lg:px-8">{children}</main>
+        <main className="min-w-0 overflow-x-hidden px-3 py-5 sm:px-5 sm:py-8 lg:px-6 xl:px-8">{children}</main>
       </div>
     </div>
   )

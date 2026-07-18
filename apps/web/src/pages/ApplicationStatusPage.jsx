@@ -129,7 +129,7 @@ function ApplicationStatusPage() {
   }
 
   return (
-    <section className="max-w-5xl">
+    <section className="max-w-5xl min-w-0">
       <PageHeader
         eyebrow="Application status"
         title="Check your application progress"
@@ -201,7 +201,7 @@ function ApplicationStatusPage() {
         )
       })()}
 
-      <div className="grid gap-5 lg:grid-cols-[360px_minmax(0,1fr)]">
+      <div className="grid min-w-0 gap-5 lg:grid-cols-[minmax(260px,340px)_minmax(0,1fr)]">
         <aside className="rounded-lg border border-[#E5E7EB] bg-white p-5 shadow-sm">
           <h2 className="text-lg font-semibold text-[#111827]">Application summary</h2>
           <div className="mt-4 grid gap-3 text-sm text-[#4B5563]">

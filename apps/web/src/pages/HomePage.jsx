@@ -8,7 +8,7 @@ function HomePage() {
         <p className="mb-3 text-xs font-semibold uppercase tracking-wide text-[#0084FF] sm:text-sm">
           ViankaX Technologies
         </p>
-        <h1 className="max-w-4xl text-3xl font-semibold leading-tight text-white sm:text-4xl lg:text-6xl">
+        <h1 className="max-w-4xl text-3xl font-semibold leading-tight text-white sm:text-4xl lg:text-5xl xl:text-6xl">
           Hiring command center for teams that recruit every day.
         </h1>
         <p className="mt-5 max-w-2xl text-base leading-7 text-[#A1A1AA] sm:text-lg sm:leading-8">

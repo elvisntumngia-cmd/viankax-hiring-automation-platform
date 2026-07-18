@@ -24,10 +24,12 @@
 body {
   margin: 0;
   background: var(--vx-app-bg);
+  overflow-x: hidden;
 }
 
 #root {
   min-height: 100vh;
+  overflow-x: hidden;
 }
 
 a {
@@ -40,4 +42,34 @@ input,
 select,
 textarea {
   font: inherit;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+img,
+svg,
+video,
+canvas {
+  max-width: 100%;
+}
+
+table {
+  max-width: 100%;
+}
+
+p,
+h1,
+h2,
+h3,
+h4,
+h5,
+h6,
+span,
+a,
+button,
+td,
+th {
+  overflow-wrap: anywhere;
 }

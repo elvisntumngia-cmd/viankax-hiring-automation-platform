@@ -317,7 +317,7 @@ function DashboardCalendarPage() {
         ) : null}
       </section>
 
-      <section className="mt-6 grid gap-4 xl:grid-cols-[minmax(0,1fr)_360px]">
+      <section className="mt-6 grid min-w-0 gap-4 xl:grid-cols-[minmax(0,1fr)_minmax(280px,360px)]">
         <div className="rounded-lg border border-white/[0.10] bg-[#0B111C] p-4 sm:p-5">
           <div className="flex items-start gap-3">
             <span className="rounded-md bg-blue-500/15 p-2 text-blue-300">
@@ -509,7 +509,7 @@ function DashboardCalendarPage() {
       <section className="mt-6 rounded-lg border border-white/[0.10] bg-[#0B111C] shadow-2xl shadow-black/25">
         <div className="flex flex-col gap-3 border-b border-white/[0.08] p-4 lg:flex-row lg:items-center lg:justify-between">
           <h2 className="text-lg font-semibold text-white">Scheduled final interviews</h2>
-          <div className="grid gap-3 sm:grid-cols-[minmax(0,1fr)_190px] lg:min-w-[520px]">
+          <div className="grid min-w-0 gap-3 sm:grid-cols-[minmax(0,1fr)_minmax(150px,190px)] lg:min-w-0">
             <label className="relative block min-w-0">
               <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-zinc-500" size={18} />
               <input
@@ -544,7 +544,7 @@ function DashboardCalendarPage() {
                   return (
                     <article
                       key={applicant.id}
-                      className="grid gap-4 rounded-lg border border-white/[0.08] bg-[#080D14] p-4 lg:grid-cols-[160px_minmax(0,1fr)_220px] lg:items-center"
+                      className="grid min-w-0 gap-4 rounded-lg border border-white/[0.08] bg-[#080D14] p-4 lg:grid-cols-[minmax(120px,160px)_minmax(0,1fr)_minmax(180px,220px)] lg:items-center"
                     >
                       <div>
                         <p className="text-sm font-semibold text-blue-300">{formatCalendarDate(interview.scheduledFor)}</p>

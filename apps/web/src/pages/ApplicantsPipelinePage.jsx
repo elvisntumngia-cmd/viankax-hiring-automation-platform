@@ -177,7 +177,7 @@ function ApplicantsPipelinePage() {
         </div>
       ) : null}
 
-      <div className="rounded-xl border border-white/[0.10] bg-[#0B111C] shadow-2xl shadow-black/25">
+      <div className="min-w-0 rounded-xl border border-white/[0.10] bg-[#0B111C] shadow-2xl shadow-black/25">
         <div className="flex flex-col gap-3 border-b border-white/[0.08] p-4 lg:flex-row lg:items-center lg:justify-between">
           <h2 className="text-lg font-semibold text-white sm:text-xl">Applicant Pipeline</h2>
           <div className="grid gap-3 sm:grid-cols-[minmax(0,1fr)_180px] lg:flex lg:flex-row">
@@ -302,8 +302,8 @@ function ApplicantsPipelinePage() {
           ))}
         </div>
 
-        <div className="hidden overflow-x-auto md:block">
-          <table className="w-full min-w-[1100px] border-collapse text-left text-sm">
+        <div className="hidden max-w-full overflow-x-auto md:block">
+          <table className="w-full min-w-[900px] border-collapse text-left text-sm xl:min-w-[1100px]">
             <thead className="text-zinc-400">
               <tr className="border-b border-white/[0.08]">
                 {['Applicant', 'Position', 'Stage', 'Overall Score', 'AI Screening', 'Voice Interview', 'Final Interview', 'Latest Activity', 'Updated', 'Actions'].map((head) => (
@@ -384,7 +384,7 @@ function ApplicantsPipelinePage() {
         ) : null}
       </div>
 
-      <div className="mt-5 grid gap-4 sm:grid-cols-2 xl:grid-cols-6">
+      <div className="mt-5 grid min-w-0 gap-4 sm:grid-cols-2 lg:grid-cols-3 2xl:grid-cols-6">
         {metricCards.map(([label, value, change, color, filterKey]) => (
           <button
             type="button"

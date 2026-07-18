@@ -115,7 +115,7 @@ function DashboardJobsPage() {
         </div>
       ) : null}
 
-      <div className="grid gap-5 xl:grid-cols-[minmax(360px,440px)_minmax(0,1fr)]">
+      <div className="grid min-w-0 gap-5 xl:grid-cols-[minmax(280px,420px)_minmax(0,1fr)]">
         <form onSubmit={submitJob} className="rounded-lg border border-white/[0.10] bg-[#0B111C] p-5 shadow-xl shadow-black/20">
           <h2 className="text-lg font-semibold text-white">{form.id ? 'Edit job' : 'Create job'}</h2>
           <div className="mt-4 grid gap-4">

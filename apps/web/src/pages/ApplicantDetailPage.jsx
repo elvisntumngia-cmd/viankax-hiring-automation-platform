@@ -328,7 +328,7 @@ function ApplicantDetailPage() {
         ))}
       </div>
 
-      <div className="mb-6 grid gap-5 xl:grid-cols-[minmax(0,1fr)_minmax(320px,420px)]">
+      <div className="mb-6 grid min-w-0 gap-5 xl:grid-cols-[minmax(0,1fr)_minmax(280px,420px)]">
         <CandidateScoreCard applicant={applicant} />
         <AiRecommendationPanel applicant={applicant} />
       </div>
@@ -353,7 +353,7 @@ function ApplicantDetailPage() {
         <AutomationEventsPanel events={applicant.automationEvents} />
       </div>
 
-      <div className="mb-6 grid gap-5 xl:grid-cols-[minmax(0,1fr)_minmax(320px,420px)]">
+      <div className="mb-6 grid min-w-0 gap-5 xl:grid-cols-[minmax(0,1fr)_minmax(280px,420px)]">
         <AutomationQueuePanel
           jobs={applicant.automationJobs}
           title="Applicant automation queue"
@@ -400,7 +400,7 @@ function ApplicantDetailPage() {
         <StageHistoryPanel history={applicant.stageHistory} />
       </div>
 
-      <div className="grid gap-5 xl:grid-cols-2">
+      <div className="grid min-w-0 gap-5 xl:grid-cols-2">
         <InfoCard title="Profile & contact">
           <DetailRow label="Phone" value={applicant.phone} />
           <DetailRow label="Email" value={applicant.email} />

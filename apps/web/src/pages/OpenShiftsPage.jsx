@@ -109,7 +109,7 @@ function OpenShiftsPage() {
         </div>
       ) : null}
 
-      <div className="grid gap-5 xl:grid-cols-[minmax(340px,440px)_minmax(0,1fr)]">
+      <div className="grid min-w-0 gap-5 xl:grid-cols-[minmax(280px,420px)_minmax(0,1fr)]">
         <form onSubmit={submitShift} className="rounded-lg border border-white/[0.10] bg-[#0B111C] p-5 shadow-xl shadow-black/20">
           <h2 className="text-lg font-semibold text-white">{form.id ? 'Edit open shift' : 'Create open shift'}</h2>
           <div className="mt-4 grid gap-4">
@@ -207,8 +207,8 @@ function OpenShiftsPage() {
 
         <div className="grid gap-5">
           <div className="overflow-hidden rounded-lg border border-white/[0.10] bg-[#0B111C] shadow-xl shadow-black/20">
-            <div className="overflow-x-auto">
-              <table className="min-w-[980px] w-full text-left text-sm">
+            <div className="max-w-full overflow-x-auto">
+              <table className="w-full min-w-[820px] text-left text-sm xl:min-w-[980px]">
                 <thead className="border-b border-white/[0.10] text-xs uppercase text-zinc-500">
                   <tr>
                     <th className="px-4 py-3">Shift</th>

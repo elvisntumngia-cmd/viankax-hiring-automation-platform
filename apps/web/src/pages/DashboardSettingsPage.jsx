@@ -88,7 +88,7 @@ function DashboardSettingsPage() {
         })}
       </div>
 
-      <section className="mt-6 grid gap-5 xl:grid-cols-[minmax(0,1fr)_360px]">
+      <section className="mt-6 grid min-w-0 gap-5 xl:grid-cols-[minmax(0,1fr)_minmax(280px,360px)]">
         <div className="rounded-lg border border-white/[0.10] bg-[#0B111C] p-5 shadow-xl shadow-black/20">
           <div className="flex items-start gap-3">
             <span className="rounded-md bg-blue-500/15 p-2 text-blue-300">

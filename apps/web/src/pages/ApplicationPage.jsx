@@ -711,7 +711,7 @@ function ApplicationPage() {
       <div className="mb-6 grid gap-4 sm:mb-8 lg:grid-cols-[minmax(0,1fr)_minmax(280px,360px)] lg:gap-6">
         <div>
           <p className="mb-2 text-xs font-semibold uppercase tracking-wide text-[#0084FF] sm:text-sm">Applicant intake</p>
-          <h1 className="text-2xl font-semibold leading-tight text-[#111827] sm:text-3xl lg:text-5xl">Apply for {job.title}</h1>
+          <h1 className="text-2xl font-semibold leading-tight text-[#111827] sm:text-3xl lg:text-4xl xl:text-5xl">Apply for {job.title}</h1>
           <p className="mt-4 max-w-3xl text-sm leading-6 text-[#6B7280] sm:text-base sm:leading-7">
             A structured, mobile-friendly application flow designed for resume-assisted
             intake, eligibility screening, compliance review, and future scoring automation.

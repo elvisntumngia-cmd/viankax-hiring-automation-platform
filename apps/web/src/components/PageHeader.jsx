@@ -7,7 +7,7 @@ function PageHeader({ eyebrow, title, description, variant = 'light' }) {
         {eyebrow}
       </p>
       <h1
-        className={`text-2xl font-semibold leading-tight sm:text-3xl lg:text-5xl ${
+        className={`text-2xl font-semibold leading-tight sm:text-3xl lg:text-4xl xl:text-5xl ${
           isDark ? 'text-white' : 'text-[#111827]'
         }`}
       >
