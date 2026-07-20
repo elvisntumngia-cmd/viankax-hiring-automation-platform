@@ -34,6 +34,7 @@ Run from repo root after function changes:
 ```powershell
 cd "C:\Users\elsii\OneDrive\Documents\VX"
 supabase functions deploy process-automation-jobs --project-ref ayoqzgsimmlblwuqdccs
+supabase functions deploy create-applicant-upload-url --project-ref ayoqzgsimmlblwuqdccs
 supabase functions deploy public-application-submit --project-ref ayoqzgsimmlblwuqdccs
 supabase functions deploy vapi-voice-webhook --project-ref ayoqzgsimmlblwuqdccs
 supabase functions deploy calendar-oauth-start --project-ref ayoqzgsimmlblwuqdccs

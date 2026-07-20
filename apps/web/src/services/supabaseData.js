@@ -210,10 +210,6 @@ const documentDefinitions = [
   { key: 'firearms', documentType: 'firearms', bucket: 'certifications', statusKey: 'firearms' },
 ]
 
-function safeFileName(fileName) {
-  return fileName.replace(/[^a-z0-9.\-_]/gi, '-').toLowerCase()
-}
-
 async function uploadApplicationDocuments(applicantId, uploadFiles = {}) {
   const uploadedDocuments = {}
   const failedUploads = {}
@@ -222,10 +218,23 @@ async function uploadApplicationDocuments(applicantId, uploadFiles = {}) {
     const file = uploadFiles[definition.key]
 
     if (file) {
-      const storagePath = `${applicantId}/${definition.documentType}-${Date.now()}-${safeFileName(file.name)}`
+      const { data: signedUpload, error: signingError } = await supabase.functions.invoke('create-applicant-upload-url', {
+        body: {
+          applicantId,
+          documentKey: definition.key,
+          fileName: file.name,
+          fileSize: file.size,
+        },
+      })
+
+      if (signingError || signedUpload?.error) {
+        failedUploads[definition.statusKey] = signedUpload?.error ?? signingError?.message ?? 'Unable to prepare upload.'
+        continue
+      }
+
       const { error } = await supabase.storage
-        .from(definition.bucket)
-        .upload(storagePath, file, { upsert: true })
+        .from(signedUpload.bucket)
+        .uploadToSignedUrl(signedUpload.path, signedUpload.token, file)
 
       if (error) {
         failedUploads[definition.statusKey] = error.message
@@ -234,8 +243,8 @@ async function uploadApplicationDocuments(applicantId, uploadFiles = {}) {
 
       uploadedDocuments[definition.statusKey] = {
         fileName: file.name,
-        storageBucket: definition.bucket,
-        storagePath,
+        storageBucket: signedUpload.bucket,
+        storagePath: signedUpload.path,
         status: 'Uploaded',
       }
     }
