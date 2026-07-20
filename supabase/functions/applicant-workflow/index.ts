@@ -589,12 +589,6 @@ Deno.serve(async (request) => {
     const action = String(body?.action ?? '')
     const supabase = createClient(supabaseUrl, serviceRoleKey, {
       auth: { persistSession: false, autoRefreshToken: false },
-      global: {
-        headers: {
-          apikey: serviceRoleKey,
-          Authorization: `Bearer ${serviceRoleKey}`,
-        },
-      },
     })
 
     if (action === 'fetch_applicant') return handleFetchApplicant(supabase, body)

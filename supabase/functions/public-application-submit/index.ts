@@ -247,12 +247,6 @@ Deno.serve(async (request) => {
 
     const supabase = createClient(supabaseUrl, serviceRoleKey, {
       auth: { persistSession: false, autoRefreshToken: false },
-      global: {
-        headers: {
-          apikey: serviceRoleKey,
-          Authorization: `Bearer ${serviceRoleKey}`,
-        },
-      },
     })
 
     const { data: applicant, error: applicantError } = await supabase
@@ -399,7 +393,6 @@ Deno.serve(async (request) => {
 
     return jsonResponse({
       ok: true,
-      intakeMode: 'service-role-edge-v2',
       applicantId: applicant.id,
       warning: failedUploadCount
         ? 'Application was saved and automation was queued, but one or more document uploads failed.'
