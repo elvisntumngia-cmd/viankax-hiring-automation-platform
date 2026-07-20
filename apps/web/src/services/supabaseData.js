@@ -896,52 +896,549 @@ export async function fetchApplicants() {
 export async function lookupApplicationStatus({ email, phone }) {
   if (!isSupabaseConfigured) return null
 
-  const { data, error } = await supabase.functions.invoke('applicant-workflow', {
-    body: {
-      action: 'lookup_status',
-      email,
-      phone,
-    },
-  })
+  let query = supabase
+    .from('applicants')
+    .select(`
+      *,
+      clients(name),
+      jobs(title, location, clients(name)),
+      assigned_site:job_sites!applicants_site_id_fkey(*),
+      assigned_shift:open_shifts!applicants_open_shift_id_fkey(*, job_sites(site_name)),
+      applicant_documents(document_type, file_name, storage_bucket, storage_path, status),
+      automation_events(event_type, event_status, event_label, metadata, created_at),
+      workflow_runs(id, workflow_name, run_status, current_step, started_at, completed_at, metadata, created_at, updated_at),
+      automation_jobs(id, job_type, job_label, job_status, priority, scheduled_for, attempts, last_error, payload, created_at, updated_at),
+      notification_queue(id, channel, recipient, subject, message, notification_status, scheduled_for, sent_at, last_error, metadata),
+      ai_screening_tasks(
+        id,
+        task_status,
+        prompt_snapshot,
+        candidate_context,
+        ai_summary,
+        role_fit_score,
+        professionalism_score,
+        communication_score,
+        availability_score,
+        risk_flags,
+        recommendation,
+        completed_at,
+        ai_screening_templates(name, role_family)
+      ),
+      pipeline_stage_history(from_stage, to_stage, changed_by, reason, created_at),
+      screening_answers(question, answer),
+      candidate_scores(
+        resume_score,
+        eligibility_score,
+        screening_score,
+        voice_interview_score,
+        overall_candidate_score
+      ),
+      ai_recommendations(recommendation, confidence, summary, risk_flags),
+      voice_interviews(provider, provider_call_id, interview_url, recording_url, score, transcript, recommendation, status, completed_at, created_at, updated_at),
+      interview_schedules(provider, scheduled_for, scheduling_url, status, interviewer_email, interview_duration_minutes, buffer_minutes, external_calendar_provider, external_event_id, sync_status, sync_error),
+      placement_matches(
+        id,
+        match_score,
+        recommendation_reason,
+        strengths,
+        concerns,
+        match_status,
+        created_at,
+        job_sites(*),
+        open_shifts(*, job_sites(site_name))
+      )
+    `)
+    .order('submitted_at', { ascending: false })
+    .limit(1)
+
+  if (email) query = query.ilike('email', email.trim())
+  if (phone) query = query.eq('phone', phone.trim())
+
+  const { data, error } = await query
   if (error) throw error
-  if (data?.error) throw new Error(data.error)
-  return data?.applicant ? mapApplicant(data.applicant) : null
+  return data?.[0] ? mapApplicant(data[0]) : null
 }
 
 export async function fetchApplicantForScreening(applicantId) {
   if (!isSupabaseConfigured) return null
 
-  const { data, error } = await supabase.functions.invoke('applicant-workflow', {
-    body: {
-      action: 'fetch_applicant',
-      applicantId,
-    },
-  })
+  const { data, error } = await supabase
+    .from('applicants')
+    .select(`
+      *,
+      clients(name),
+      jobs(title, location, clients(name)),
+      assigned_site:job_sites!applicants_site_id_fkey(*),
+      assigned_shift:open_shifts!applicants_open_shift_id_fkey(*, job_sites(site_name)),
+      applicant_documents(document_type, file_name, storage_bucket, storage_path, status),
+      automation_events(event_type, event_status, event_label, metadata, created_at),
+      workflow_runs(id, workflow_name, run_status, current_step, started_at, completed_at, metadata, created_at, updated_at),
+      automation_jobs(id, job_type, job_label, job_status, priority, scheduled_for, attempts, last_error, payload, created_at, updated_at),
+      notification_queue(id, channel, recipient, subject, message, notification_status, scheduled_for, sent_at, last_error, metadata),
+      ai_screening_tasks(
+        id,
+        task_status,
+        prompt_snapshot,
+        candidate_context,
+        ai_summary,
+        role_fit_score,
+        professionalism_score,
+        communication_score,
+        availability_score,
+        risk_flags,
+        recommendation,
+        completed_at,
+        ai_screening_templates(name, role_family)
+      ),
+      pipeline_stage_history(from_stage, to_stage, changed_by, reason, created_at),
+      screening_answers(question, answer),
+      candidate_scores(
+        resume_score,
+        eligibility_score,
+        screening_score,
+        voice_interview_score,
+        overall_candidate_score
+      ),
+      ai_recommendations(recommendation, confidence, summary, risk_flags),
+      voice_interviews(provider, provider_call_id, interview_url, recording_url, score, transcript, recommendation, status, completed_at, created_at, updated_at),
+      interview_schedules(provider, scheduled_for, scheduling_url, status, interviewer_email, interview_duration_minutes, buffer_minutes, external_calendar_provider, external_event_id, sync_status, sync_error),
+      placement_matches(
+        id,
+        match_score,
+        recommendation_reason,
+        strengths,
+        concerns,
+        match_status,
+        created_at,
+        job_sites(*),
+        open_shifts(*, job_sites(site_name))
+      )
+    `)
+    .eq('id', applicantId)
+    .single()
+
   if (error) throw error
-  if (data?.error) throw new Error(data.error)
-  return data?.applicant ? mapApplicant(data.applicant) : null
+  return mapApplicant(data)
+}
+
+const aiScreeningAnswerLabels = {
+  authorizedToWork: 'Are you authorized to work in the United States?',
+  backgroundCheck: 'Are you willing to undergo a background check?',
+  hasSecurityLicense: 'Do you currently hold a valid security license or guard card?',
+  licenseType: 'What type of license do you currently hold?',
+  shiftTypes: 'Which shift types are you available for?',
+  availableDays: 'Which days are you available?',
+  weekendHolidayOvertime: 'Are you available for weekends, holidays, or overtime if needed?',
+  startDate: 'When can you start?',
+  reliableTransportation: 'Do you have reliable transportation?',
+  maxCommute: 'What is the maximum commute distance you are comfortable with?',
+  yearsExperience: 'How many years of security experience do you have?',
+  environments: 'What security environments have you worked in before?',
+  supervisedTeam: 'Have you supervised a team before?',
+  incidentReporting: 'Do you have incident reporting experience?',
+  digitalReportingTools: 'Are you comfortable using mobile apps or digital reporting tools while on duty?',
+  standingWalking: 'Are you comfortable standing or walking for long periods?',
+  outdoorWork: 'Are you comfortable working outdoors if required?',
+  workingAlone: 'Are you comfortable working alone at a site if assigned?',
+  interestReason: 'Why are you interested in this security role?',
+  preferredSecurityWork: 'What type of security work do you prefer and why?',
+  reliabilityReason: 'What makes you a reliable candidate for this role?',
 }
 
 function normalizedList(value) {
   return Array.isArray(value) ? value : value ? [value] : []
 }
 
-export async function submitAiScreeningAssessment(applicantId, answers) {
+function writtenResponseScore(answers) {
+  const responses = [answers.interestReason, answers.preferredSecurityWork, answers.reliabilityReason]
+  const totalLength = responses.reduce((sum, answer) => sum + String(answer ?? '').trim().length, 0)
+  const completeResponses = responses.filter((answer) => String(answer ?? '').trim().length >= 25).length
+  const positiveSignals = ['reliable', 'professional', 'team', 'serve', 'protect', 'safe', 'communication', 'experience', 'available']
+  const combined = responses.join(' ').toLowerCase()
+  const signalBonus = positiveSignals.filter((signal) => combined.includes(signal)).length * 2
+
+  return Math.min(96, 58 + completeResponses * 9 + Math.min(18, Math.floor(totalLength / 45)) + signalBonus)
+}
+
+function scoreAssessmentAnswers(answers, applicant = {}) {
+  const strengths = []
+  const concerns = []
+  const knockoutConcerns = []
+  const shiftTypes = normalizedList(answers.shiftTypes)
+  const availableDays = normalizedList(answers.availableDays)
+  const environmentsWorked = normalizedList(answers.environments)
+  const requiredLicenseText = `${applicant.requiredLicenseType ?? ''} ${applicant.role ?? ''}`.toLowerCase()
+  const licenseIsRequired = requiredLicenseText.includes('spo') ||
+    requiredLicenseText.includes('armed') ||
+    requiredLicenseText.includes('so') ||
+    requiredLicenseText.includes('license') ||
+    requiredLicenseText.includes('guard card')
+  const hasUsefulLicense = answers.hasSecurityLicense === 'Yes' && !['None', ''].includes(answers.licenseType)
+
+  let eligibilityScore = 100
+  if (answers.authorizedToWork !== 'Yes') {
+    eligibilityScore -= 50
+    knockoutConcerns.push('Not authorized to work in the United States')
+  } else {
+    strengths.push('Authorized to work in the United States')
+  }
+
+  if (answers.backgroundCheck !== 'Yes') {
+    eligibilityScore -= 40
+    knockoutConcerns.push('Not willing to undergo background check')
+  } else {
+    strengths.push('Willing to undergo background check')
+  }
+
+  if (!hasUsefulLicense) {
+    eligibilityScore -= licenseIsRequired ? 30 : 10
+    concerns.push(licenseIsRequired ? 'Required license needs HR/compliance review' : 'No current security license listed')
+  } else {
+    strengths.push(`Valid ${answers.licenseType} license/guard card`)
+  }
+  eligibilityScore = Math.max(0, eligibilityScore)
+
+  const availabilityScore = Math.min(100, 45 + shiftTypes.length * 8 + availableDays.length * 4 + (answers.weekendHolidayOvertime === 'Yes' ? 15 : 0) + (answers.startDate ? 8 : 0))
+  if (shiftTypes.includes('Flexible')) strengths.push('Flexible shift availability')
+  if (answers.weekendHolidayOvertime === 'Yes') strengths.push('Available for weekends, holidays, or overtime')
+  if (availableDays.length < 3) concerns.push('Limited weekly availability')
+
+  const transportationScore = answers.reliableTransportation === 'Yes'
+    ? answers.maxCommute === '30+ miles'
+      ? 100
+      : answers.maxCommute === '20 miles'
+        ? 92
+        : 84
+    : 25
+  if (answers.reliableTransportation === 'Yes') strengths.push('Reliable transportation')
+  if (answers.reliableTransportation !== 'Yes') {
+    concerns.push('No reliable transportation for site-based work')
+    knockoutConcerns.push('No reliable transportation for site-based work')
+  }
+
+  const experienceBase = {
+    'No experience': 45,
+    'Less than 1 year': 58,
+    '1-2 years': 72,
+    '3-5 years': 86,
+    '5+ years': 95,
+  }[answers.yearsExperience] ?? 55
+  const environmentBonus = Math.min(12, environmentsWorked.filter((environment) => !['None', 'Other'].includes(environment)).length * 3)
+  const experienceScore = Math.min(100, experienceBase + environmentBonus + (answers.incidentReporting === 'Yes' ? 5 : 0) + (answers.supervisedTeam === 'Yes' ? 4 : 0))
+  if (!['No experience', 'Less than 1 year'].includes(answers.yearsExperience)) strengths.push(`${answers.yearsExperience} of security experience`)
+  if (answers.incidentReporting !== 'Yes') concerns.push('Limited incident reporting experience')
+  if (answers.supervisedTeam !== 'Yes') concerns.push('No supervisory experience')
+
+  const siteReadinessScore = Math.min(100, 40 +
+    (answers.standingWalking === 'Yes' ? 20 : 0) +
+    (answers.outdoorWork === 'Yes' ? 15 : 0) +
+    (answers.workingAlone === 'Yes' ? 15 : 0) +
+    (answers.digitalReportingTools === 'Yes' ? 10 : 0))
+  if (answers.standingWalking === 'Yes') strengths.push('Comfortable standing or walking for long periods')
+  if (answers.outdoorWork !== 'Yes') concerns.push('May not prefer outdoor posts')
+  if (answers.workingAlone !== 'Yes') concerns.push('May not prefer solo site assignments')
+
+  const communicationScore = writtenResponseScore(answers)
+  const screeningScore = Math.round(
+    eligibilityScore * 0.22 +
+    availabilityScore * 0.16 +
+    transportationScore * 0.16 +
+    experienceScore * 0.18 +
+    siteReadinessScore * 0.14 +
+    communicationScore * 0.14,
+  )
+  const overallCandidateScore = screeningScore
+
+  const recommendation = knockoutConcerns.length
+    ? 'Not Recommended'
+    : screeningScore >= 85
+      ? 'Strong Candidate'
+      : screeningScore >= 72
+        ? 'Moderate Candidate'
+        : screeningScore >= 60
+          ? 'Needs Review'
+          : 'Not Recommended'
+  const suggestedNextStep = knockoutConcerns.length
+    ? 'Hold for HR review'
+    : !hasUsefulLicense && licenseIsRequired
+      ? 'Proceed to license verification'
+      : screeningScore >= 72
+        ? 'Proceed to voice interview'
+        : 'Hold for HR review'
+
+  return {
+    eligibilityScore,
+    availabilityScore,
+    transportationScore,
+    experienceScore,
+    siteReadinessScore,
+    communicationScore,
+    screeningScore,
+    overallCandidateScore,
+    roleFitScore: experienceScore,
+    professionalismScore: siteReadinessScore,
+    riskFlags: [...new Set([...knockoutConcerns, ...concerns])],
+    strengths: [...new Set(strengths)].slice(0, 6),
+    concerns: [...new Set(concerns)].slice(0, 6),
+    knockoutConcerns,
+    recommendation,
+    suggestedNextStep,
+    placementSignals: {
+      licenseType: answers.licenseType,
+      shiftTypes,
+      availableDays,
+      maxCommute: answers.maxCommute,
+      environmentsWorked,
+      traits: [
+        answers.incidentReporting === 'Yes' ? 'incident reporting' : null,
+        answers.supervisedTeam === 'Yes' ? 'supervisor experience' : null,
+        answers.digitalReportingTools === 'Yes' ? 'digital reporting' : null,
+        answers.outdoorWork === 'Yes' ? 'outdoor tolerance' : null,
+        answers.workingAlone === 'Yes' ? 'solo post readiness' : null,
+      ].filter(Boolean),
+    },
+  }
+}
+
+export async function submitAiScreeningAssessment(applicantId, answers, applicant = {}) {
   if (!isSupabaseConfigured) {
     throw new Error('Supabase is not configured.')
   }
 
-  const { data, error } = await supabase.functions.invoke('applicant-workflow', {
-    body: {
-      action: 'submit_ai_screening',
-      applicantId,
-      answers,
-    },
-  })
+  const now = new Date().toISOString()
+  const scores = scoreAssessmentAnswers(answers, applicant)
+  const shouldStartVoiceInterview = ['Strong Candidate', 'Moderate Candidate'].includes(scores.recommendation) &&
+    !['Hold for HR review', 'Reject'].includes(scores.suggestedNextStep)
+  const appOrigin = typeof window !== 'undefined' ? window.location.origin : ''
+  const voiceUrl = appOrigin ? `${appOrigin}/voice/${applicantId}` : `/voice/${applicantId}`
+  const { data: screeningEmailJob, error: screeningEmailJobError } = await supabase
+    .from('automation_jobs')
+    .select('id')
+    .eq('applicant_id', applicantId)
+    .eq('job_type', 'send_screening_complete_email')
+    .order('created_at', { ascending: false })
+    .limit(1)
+    .maybeSingle()
 
-  if (error) throw error
-  if (data?.error) throw new Error(data.error)
-  return data
+  if (screeningEmailJobError) throw screeningEmailJobError
+
+  const answerRows = Object.entries(answers).map(([question, answer]) => ({
+    applicant_id: applicantId,
+    question: aiScreeningAnswerLabels[question] ?? question,
+    answer: Array.isArray(answer) ? answer.join(', ') : answer,
+    category: 'ai_assessment',
+  }))
+  const aiSummary = `${scores.recommendation}. ${scores.strengths.length ? `Strengths: ${scores.strengths.join(', ')}.` : ''} ${scores.concerns.length ? `Concerns: ${scores.concerns.join(', ')}.` : ''} Suggested next step: ${scores.suggestedNextStep}.`
+
+  const operations = [
+    supabase.from('screening_answers').insert(answerRows),
+    supabase
+      .from('ai_screening_tasks')
+      .update({
+        task_status: 'completed',
+        candidate_context: {
+          answers,
+          categoryScores: {
+            eligibility: scores.eligibilityScore,
+            availability: scores.availabilityScore,
+            transportation: scores.transportationScore,
+            experience: scores.experienceScore,
+            siteReadiness: scores.siteReadinessScore,
+            communication: scores.communicationScore,
+          },
+          strengths: scores.strengths,
+          concerns: scores.concerns,
+          suggestedNextStep: scores.suggestedNextStep,
+          placementSignals: scores.placementSignals,
+        },
+        ai_summary: aiSummary,
+        role_fit_score: scores.roleFitScore,
+        professionalism_score: scores.professionalismScore,
+        communication_score: scores.communicationScore,
+        availability_score: scores.availabilityScore,
+        risk_flags: scores.riskFlags,
+        recommendation: scores.recommendation,
+        completed_at: now,
+        updated_at: now,
+      })
+      .eq('applicant_id', applicantId)
+      .in('task_status', ['queued', 'running', 'completed']),
+    supabase
+      .from('candidate_scores')
+      .upsert({
+        applicant_id: applicantId,
+        eligibility_score: scores.eligibilityScore,
+        screening_score: scores.screeningScore,
+        overall_candidate_score: scores.overallCandidateScore,
+        updated_at: now,
+      }, { onConflict: 'applicant_id' }),
+    supabase
+      .from('ai_recommendations')
+      .upsert({
+        applicant_id: applicantId,
+        recommendation: scores.recommendation,
+        confidence: scores.screeningScore,
+        summary: aiSummary,
+        risk_flags: scores.concerns,
+        updated_at: now,
+      }, { onConflict: 'applicant_id' }),
+    supabase
+      .from('automation_jobs')
+      .update({
+        job_status: 'completed',
+        last_error: null,
+        updated_at: now,
+      })
+      .eq('applicant_id', applicantId)
+      .eq('job_type', 'evaluate_ai_assessment')
+      .in('job_status', ['queued', 'running']),
+    supabase
+      .from('automation_jobs')
+      .update({
+        job_status: 'blocked',
+        scheduled_for: now,
+        last_error: shouldStartVoiceInterview
+          ? 'Waiting for candidate to trigger voice interview from email link.'
+          : `AI screening recommended: ${scores.suggestedNextStep}.`,
+        updated_at: now,
+      })
+      .eq('applicant_id', applicantId)
+      .eq('job_type', 'voice_interview_analysis')
+      .in('job_status', ['blocked', 'queued', 'running', 'failed']),
+    supabase
+      .from('automation_jobs')
+      .update({
+        job_status: 'queued',
+        scheduled_for: now,
+        last_error: null,
+        updated_at: now,
+      })
+      .eq('applicant_id', applicantId)
+      .eq('job_type', 'send_screening_complete_email')
+      .in('job_status', ['blocked', 'queued', 'running', 'failed']),
+    supabase
+      .from('notification_queue')
+      .insert({
+        applicant_id: applicantId,
+        automation_job_id: screeningEmailJob?.id ?? null,
+        channel: 'email',
+        recipient: applicant.email,
+        subject: 'Your ViankaX screening is complete',
+        message: shouldStartVoiceInterview
+          ? `Your AI screening is complete. Please trigger your voice interview when you are ready: ${voiceUrl}`
+          : 'Your AI screening is complete. Our hiring team will review your application and follow up with next steps.',
+        notification_status: 'queued',
+        scheduled_for: now,
+        metadata: {
+          template: 'screening_complete_voice_trigger',
+          voiceUrl: shouldStartVoiceInterview ? voiceUrl : null,
+          screeningScore: scores.screeningScore,
+          recommendation: scores.recommendation,
+          suggestedNextStep: scores.suggestedNextStep,
+        },
+      }),
+    supabase
+      .from('automation_events')
+      .update({
+        event_status: 'complete',
+        metadata: {
+          description: 'AI screening review moved forward after applicant completed the structured assessment.',
+        },
+      })
+      .eq('applicant_id', applicantId)
+      .eq('event_type', 'pending_ai_review')
+      .eq('event_status', 'current'),
+    supabase
+      .from('applicants')
+      .update({
+        current_stage: 'Assessment Completed',
+        status: ['Strong Candidate', 'Moderate Candidate'].includes(scores.recommendation) ? 'Qualified' : 'Needs Review',
+        updated_at: now,
+      })
+      .eq('id', applicantId),
+    supabase
+      .from('pipeline_stage_history')
+      .insert({
+        applicant_id: applicantId,
+        from_stage: 'New Applicant',
+        to_stage: 'Assessment Completed',
+        changed_by: 'ai_screening_page',
+        reason: 'Applicant completed AI screening assessment.',
+      }),
+    supabase
+      .from('automation_events')
+      .insert([
+        {
+          applicant_id: applicantId,
+          event_type: 'ai_screening_completed',
+          event_status: 'complete',
+          event_label: 'AI Screening Completed',
+          metadata: {
+            description: 'Applicant completed the structured AI chat screening assessment.',
+            scores,
+          },
+        },
+        {
+          applicant_id: applicantId,
+          event_type: 'candidate_scored',
+          event_status: 'complete',
+          event_label: 'Candidate Scored',
+          metadata: {
+            description: `Overall screening score generated: ${scores.screeningScore}%.`,
+            screeningScore: scores.screeningScore,
+            recommendation: scores.recommendation,
+          },
+        },
+        {
+          applicant_id: applicantId,
+          event_type: 'next_step_recommended',
+          event_status: 'current',
+          event_label: 'Next Step Recommended',
+          metadata: {
+            description: scores.suggestedNextStep,
+            suggestedNextStep: scores.suggestedNextStep,
+            placementSignals: scores.placementSignals,
+          },
+        },
+      ]),
+    supabase
+      .from('workflow_runs')
+      .update({
+        run_status: 'running',
+        current_step: scores.suggestedNextStep,
+        metadata: {
+          nextAction: scores.suggestedNextStep,
+          screeningRecommendation: scores.recommendation,
+          screeningScore: scores.screeningScore,
+        },
+        updated_at: now,
+      })
+      .eq('applicant_id', applicantId),
+  ]
+
+  const results = await Promise.all(operations)
+  const operationError = results.find((result) => result.error)?.error
+  if (operationError) throw operationError
+
+  let automationKickoff
+  try {
+    const { data, error } = await supabase.functions.invoke('process-automation-jobs', {
+      body: { mode: 'ai-screening-submit-email-kickoff', maxJobs: 3 },
+    })
+
+    automationKickoff = error
+      ? { ok: false, message: error.message }
+      : { ok: true, message: data?.message ?? 'Screening completion email kickoff requested.', data }
+  } catch (kickoffError) {
+    automationKickoff = { ok: false, message: kickoffError.message }
+  }
+
+  return {
+    ok: true,
+    scores,
+    summary: aiSummary,
+    automationKickoff,
+  }
 }
 
 export async function triggerVoiceInterview(applicantId) {
@@ -949,16 +1446,85 @@ export async function triggerVoiceInterview(applicantId) {
     throw new Error('Supabase is not configured.')
   }
 
-  const { data, error } = await supabase.functions.invoke('applicant-workflow', {
-    body: {
-      action: 'trigger_voice_interview',
-      applicantId,
-    },
+  const now = new Date().toISOString()
+  const { data: jobs, error: jobError } = await supabase
+    .from('automation_jobs')
+    .select('id, job_status')
+    .eq('applicant_id', applicantId)
+    .eq('job_type', 'voice_interview_analysis')
+    .order('created_at', { ascending: false })
+    .limit(1)
+
+  if (jobError) throw jobError
+  const job = jobs?.[0]
+  if (!job) throw new Error('No voice interview automation job was found for this applicant.')
+
+  const { data: existingVoiceInterview, error: existingVoiceError } = await supabase
+    .from('voice_interviews')
+    .select('id, provider_call_id, status')
+    .eq('applicant_id', applicantId)
+    .eq('provider', 'vapi')
+    .not('provider_call_id', 'is', null)
+    .order('created_at', { ascending: false })
+    .limit(1)
+    .maybeSingle()
+
+  if (existingVoiceError) throw existingVoiceError
+  if (existingVoiceInterview?.provider_call_id) {
+    return {
+      ok: true,
+      alreadyStarted: true,
+      message: 'Your voice interview has already been started. Please answer or check your recent calls.',
+      voiceInterview: existingVoiceInterview,
+    }
+  }
+
+  const { error: updateError } = await supabase
+    .from('automation_jobs')
+    .update({
+      job_status: 'queued',
+      scheduled_for: now,
+      attempts: 0,
+      last_error: null,
+      payload: { provider: 'vapi', mode: 'candidate_triggered_voice_interview' },
+      updated_at: now,
+    })
+    .eq('id', job.id)
+    .in('job_status', ['blocked', 'queued', 'failed', 'running'])
+
+  if (updateError) throw updateError
+
+  const { error: eventError } = await supabase
+    .from('automation_events')
+    .insert({
+      applicant_id: applicantId,
+      event_type: 'candidate_triggered_voice_interview',
+      event_status: 'complete',
+      event_label: 'Candidate Triggered Voice Interview',
+      metadata: {
+        description: 'Candidate clicked the secure voice interview link from the screening completion email.',
+        automationJobId: job.id,
+      },
+    })
+
+  if (eventError) throw eventError
+
+  const { data, error } = await supabase.functions.invoke('process-automation-jobs', {
+    body: { mode: 'candidate-triggered-voice-interview', maxJobs: 3 },
   })
 
-  if (error) throw error
-  if (data?.error) throw new Error(data.error)
-  return data
+  if (error) {
+    return {
+      ok: false,
+      message: error.message,
+    }
+  }
+
+  return {
+    ok: true,
+    message: data?.message ?? 'Voice interview call requested. Please keep your phone nearby.',
+    data,
+  }
 }
 
 export async function fetchAutomationQueueSummary() {
