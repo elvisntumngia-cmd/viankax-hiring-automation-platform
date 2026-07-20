@@ -4,10 +4,11 @@ import { Link } from 'react-router-dom'
 import AutomationOutcomePanel from '../components/AutomationOutcomePanel'
 import AutomationQueuePanel from '../components/AutomationQueuePanel'
 import AutomationRunHistoryPanel from '../components/AutomationRunHistoryPanel'
+import DemoHealthPanel from '../components/DemoHealthPanel'
 import PageHeader from '../components/PageHeader'
 import { applicants as dummyApplicants } from '../data/dummyApplicants'
 import useSupabaseData from '../hooks/useSupabaseData'
-import { fetchApplicants, fetchAutomationQueueSummary, fetchAutomationRunHistory, fetchOpenShifts, processNextAutomationJob } from '../services/supabaseData'
+import { defaultCalendarSettings, fetchApplicants, fetchAutomationQueueSummary, fetchAutomationRunHistory, fetchCalendarSettings, fetchOpenShifts, processNextAutomationJob } from '../services/supabaseData'
 import { getStoredApplications } from '../utils/applicationStorage'
 import { getRecentApplicantActivity, matchesPipelinePreset } from '../utils/candidateInsights'
 
@@ -15,6 +16,7 @@ function DashboardPage() {
   const [processorState, setProcessorState] = useState({ busy: false, message: '', error: '' })
   const { data: backendApplicants, status, error, reload: reloadApplicants } = useSupabaseData(fetchApplicants, dummyApplicants)
   const { data: openShifts } = useSupabaseData(fetchOpenShifts, [])
+  const { data: calendarSettings } = useSupabaseData(fetchCalendarSettings, defaultCalendarSettings)
   const { data: automationQueue, status: queueStatus, error: queueError, reload: reloadAutomationQueue } = useSupabaseData(fetchAutomationQueueSummary, [])
   const { data: automationHistory, reload: reloadAutomationHistory } = useSupabaseData(fetchAutomationRunHistory, [])
   const applicants = [...backendApplicants, ...getStoredApplications()]
@@ -103,9 +105,20 @@ function DashboardPage() {
 
       {status === 'error' ? (
         <div className="mt-5 rounded-lg border border-amber-400/30 bg-amber-500/10 p-4 text-sm text-amber-200">
-          Supabase applicants could not load, so fallback records are showing. {error?.message}
+          Applicant records could not refresh from Supabase. Showing available cached/demo records for review. {error?.message}
         </div>
       ) : null}
+
+      <div className="mt-6 sm:mt-8">
+        <DemoHealthPanel
+          applicants={applicants}
+          applicantStatus={status}
+          applicantError={error}
+          queueStatus={queueStatus}
+          queueError={queueError}
+          calendarSettings={calendarSettings}
+        />
+      </div>
 
       <div className="mt-6 grid gap-6 xl:grid-cols-[minmax(0,1fr)_minmax(280px,360px)] sm:mt-8">
         <section className="min-w-0 rounded-lg border border-white/[0.10] bg-[#0B111C] p-4 shadow-2xl shadow-black/25 sm:p-5">
@@ -150,7 +163,7 @@ function DashboardPage() {
           <div>
             <h2 className="text-lg font-semibold text-white">Automation engine queue</h2>
             <p className="mt-2 text-sm text-zinc-400">
-              {applicants.length} applicants are loaded into the HR pipeline, including local demo submissions.
+              {applicants.length} applicants are loaded into the HR pipeline for review.
               {status === 'success' ? ' Supabase is connected.' : ''}
             </p>
           </div>
@@ -279,7 +292,7 @@ function DashboardPage() {
                   </p>
                 </div>
                 <span className="rounded-md bg-blue-500/15 px-3 py-1 text-xs font-semibold text-blue-300 sm:mt-3 sm:inline-flex">
-                  {applicant.finalInterview?.provider ?? 'Calendar placeholder'}
+                  {applicant.finalInterview?.provider ?? 'Internal calendar'}
                 </span>
               </div>
             </Link>

@@ -236,7 +236,7 @@ function DashboardCalendarPage() {
 
       {status === 'error' ? (
         <div className="mb-5 rounded-lg border border-amber-400/30 bg-amber-500/10 p-4 text-sm text-amber-200">
-          Supabase applicants could not load, so fallback records are showing. {error?.message}
+          Applicant records could not refresh from Supabase. Showing available cached/demo records for review. {error?.message}
         </div>
       ) : null}
 
