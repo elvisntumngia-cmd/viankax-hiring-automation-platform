@@ -74,6 +74,10 @@ function errorMessage(error: unknown) {
   return error instanceof Error ? error.message : String(error)
 }
 
+function isUuid(value: unknown) {
+  return /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(String(value ?? ''))
+}
+
 function voiceCallWindowStatus(date = new Date()) {
   return { allowed: true, nextAt: date.toISOString(), message: 'Voice calling window disabled. Calls may run immediately.' }
 }
@@ -1392,12 +1396,14 @@ Deno.serve(async (request) => {
     const supabase = createClient(supabaseUrl, serviceRoleKey)
     const body = await request.json().catch(() => ({}))
     const maxJobs = Math.min(Math.max(Number(body?.maxJobs ?? 10), 1), 25)
+    const targetApplicantId = isUuid(body?.applicantId) ? String(body.applicantId) : ''
+    const targetScreeningCompleteEmail = body?.mode === 'ai-screening-submit-email-kickoff' && targetApplicantId
     const processedJobs: Array<Record<string, unknown>> = []
     const deferredJobs: Array<Record<string, unknown>> = []
 
     for (let index = 0; index < maxJobs; index += 1) {
       const now = new Date().toISOString()
-      const { data: jobs, error: jobError } = await supabase
+      let jobQuery = supabase
         .from('automation_jobs')
         .select(`
           id,
@@ -1415,6 +1421,14 @@ Deno.serve(async (request) => {
         `)
         .eq('job_status', 'queued')
         .lte('scheduled_for', now)
+      
+      if (targetScreeningCompleteEmail) {
+        jobQuery = jobQuery
+          .eq('applicant_id', targetApplicantId)
+          .eq('job_type', 'send_screening_complete_email')
+      }
+
+      const { data: jobs, error: jobError } = await jobQuery
         .order('priority', { ascending: true })
         .order('scheduled_for', { ascending: true })
         .limit(1)

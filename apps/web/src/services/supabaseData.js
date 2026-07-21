@@ -1423,7 +1423,7 @@ export async function submitAiScreeningAssessment(applicantId, answers, applican
   let automationKickoff
   try {
     const { data, error } = await supabase.functions.invoke('process-automation-jobs', {
-      body: { mode: 'ai-screening-submit-email-kickoff', maxJobs: 3 },
+      body: { mode: 'ai-screening-submit-email-kickoff', applicantId, maxJobs: 3 },
     })
 
     automationKickoff = error
