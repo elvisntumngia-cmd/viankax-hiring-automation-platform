@@ -15,7 +15,7 @@ import { getPlacementRecommendation } from '../data/dummySites'
 import useSupabaseData from '../hooks/useSupabaseData'
 import { assignApplicantToPlacement, createDocumentSignedUrl, fetchApplicants, updateApplicantDecision } from '../services/supabaseData'
 import { getStoredApplications } from '../utils/applicationStorage'
-import { getCandidateScores } from '../utils/candidateInsights'
+import { formatScore, getAutomationOutcome, getCandidateScores } from '../utils/candidateInsights'
 
 const statusClass = {
   Qualified: 'border-emerald-400/30 bg-emerald-500/15 text-emerald-300',
@@ -39,6 +39,16 @@ function DetailRow({ label, value }) {
     <div className="flex flex-col gap-1 border-b sm:flex-row sm:items-start sm:justify-between sm:gap-4 border-white/[0.08] py-2 last:border-b-0">
       <span className="font-medium text-zinc-500">{label}</span>
       <span className="font-semibold text-white sm:text-right">{value}</span>
+    </div>
+  )
+}
+
+function ReviewPacketItem({ label, value, helper }) {
+  return (
+    <div className="rounded-lg border border-white/[0.08] bg-white/[0.04] p-4">
+      <p className="text-xs font-semibold uppercase tracking-wide text-zinc-500">{label}</p>
+      <p className="mt-2 text-lg font-semibold text-white">{value}</p>
+      {helper ? <p className="mt-2 text-sm leading-6 text-zinc-400">{helper}</p> : null}
     </div>
   )
 }
@@ -289,6 +299,7 @@ function ApplicantDetailPage() {
   const placementRecommendation = applicant.placementRecommendation ?? getPlacementRecommendation(applicant)
   const groupedScreeningAnswers = groupScreeningAnswers(applicant.screeningAnswers)
   const voiceAutomationSummary = getVoiceAutomationSummary(applicant)
+  const automationOutcome = getAutomationOutcome(applicant)
 
   return (
     <section>
@@ -327,6 +338,65 @@ function ApplicantDetailPage() {
           </div>
         ))}
       </div>
+
+      <section className="mb-6 rounded-lg border border-white/[0.10] bg-[#0B111C] p-5 shadow-xl shadow-black/20">
+        <div className="flex flex-col gap-3 lg:flex-row lg:items-start lg:justify-between">
+          <div>
+            <p className="text-sm font-semibold uppercase tracking-wide text-blue-300">Final HR review packet</p>
+            <h2 className="mt-2 text-xl font-semibold text-white">Decision-ready candidate summary</h2>
+            <p className="mt-2 max-w-3xl text-sm leading-6 text-zinc-400">
+              {automationOutcome.summary}
+            </p>
+          </div>
+          <span className="inline-flex w-fit rounded-md border border-white/[0.10] bg-white/[0.04] px-3 py-2 text-sm font-semibold text-white">
+            {automationOutcome.status}
+          </span>
+        </div>
+
+        <div className="mt-5 grid gap-3 md:grid-cols-2 xl:grid-cols-4">
+          <ReviewPacketItem
+            label="Overall"
+            value={formatScore(scores.overallCandidateScore)}
+            helper={applicant.aiRecommendation?.label ?? 'AI recommendation pending'}
+          />
+          <ReviewPacketItem
+            label="Screening"
+            value={formatScore(scores.screeningScore)}
+            helper={applicant.aiScreening?.recommendation ?? applicant.aiRecommendation?.label ?? 'Structured screening pending'}
+          />
+          <ReviewPacketItem
+            label="Voice"
+            value={formatScore(scores.voiceInterviewScore)}
+            helper={applicant.voiceInterview?.recommendation ?? voiceAutomationSummary.label}
+          />
+          <ReviewPacketItem
+            label="Placement"
+            value={Number.isFinite(placementRecommendation.matchScore) ? `${placementRecommendation.matchScore}%` : 'Pending'}
+            helper={placementRecommendation.bestMatch ?? placementRecommendation.bestSite?.siteName ?? 'Best-fit site pending'}
+          />
+        </div>
+
+        <div className="mt-5 grid gap-3 lg:grid-cols-3">
+          <div className="rounded-lg border border-white/[0.08] bg-white/[0.04] p-4">
+            <p className="font-semibold text-white">Recommended next step</p>
+            <p className="mt-2 text-sm leading-6 text-zinc-300">{automationOutcome.nextStep}</p>
+          </div>
+          <div className="rounded-lg border border-white/[0.08] bg-white/[0.04] p-4">
+            <p className="font-semibold text-white">Final interview</p>
+            <p className="mt-2 text-sm leading-6 text-zinc-300">
+              {applicant.finalInterview?.status === 'Scheduled'
+                ? `${applicant.interviewTime} with ${applicant.finalInterview?.interviewerEmail ?? 'the hiring team'}`
+                : 'Not scheduled yet'}
+            </p>
+          </div>
+          <div className="rounded-lg border border-white/[0.08] bg-white/[0.04] p-4">
+            <p className="font-semibold text-white">Document readiness</p>
+            <p className="mt-2 text-sm leading-6 text-zinc-300">
+              Resume: {applicant.documents?.resume ?? 'Pending'} | License: {applicant.documents?.license ?? 'Pending'} | ID: {applicant.documents?.governmentId ?? 'Pending'}
+            </p>
+          </div>
+        </div>
+      </section>
 
       <div className="mb-6 grid min-w-0 gap-5 xl:grid-cols-[minmax(0,1fr)_minmax(280px,420px)]">
         <CandidateScoreCard applicant={applicant} />

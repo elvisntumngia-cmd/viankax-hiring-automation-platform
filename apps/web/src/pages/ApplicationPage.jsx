@@ -415,7 +415,7 @@ function ApplicationPage() {
       navigate('/success')
     } catch (error) {
       saveSubmittedApplication({ ...payload, syncedToSupabase: false })
-      setSubmitError(`Supabase submission failed, so the application was saved locally. ${error.message}`)
+      setSubmitError(`We could not sync this application to the hiring dashboard yet. Please try submitting again in a moment. Technical detail: ${error.message}`)
     } finally {
       setIsSubmitting(false)
     }
